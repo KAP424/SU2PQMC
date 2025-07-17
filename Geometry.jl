@@ -33,7 +33,7 @@ function i_xy(Lattice::String,site::Vector{Int64},i::Int64)
             return x::Int64,y::Int64
         end
     elseif  Lattice=="HoneyComb"
-        j=div(i,2)
+        j=Int(ceil(i/2))
         return mod1(j,site[1]),div(j,site[1])+1
     else
         error("Not support $Lattice")
