@@ -85,7 +85,7 @@ function K_Matrix(Lattice::String,site::Vector{Int64})
 
                 k=k-1
                 k1=xy_i(Lattice,site,mod1(i+1,site[1]),j)
-                k2=xy_i(Lattice,site,i,mod1(j-1,site[1]))
+                k2=xy_i(Lattice,site,i,mod1(j-1,site[2]))
                 K[k,k+1]=K[k,k1]=K[k,k2]=1
 
             # -------------------------------------------------------------

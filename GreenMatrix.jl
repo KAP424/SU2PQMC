@@ -72,7 +72,7 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
                 UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
             end
         end
-        UR[1,:,:]=UR[1,:,:]
+        # UR[1,:,:]=UR[1,:,:]
         UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
     
         counter=0
@@ -85,7 +85,7 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
                 UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
             end
         end
-        UL[end,:,:]=UL[end,:,:]
+        # UL[end,:,:]=UL[end,:,:]
         UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
     
         for i in 1:size(BBs)[1]-1
@@ -170,7 +170,7 @@ function G12FF(model,s,τ1,τ2)
 
         return G12,G21
     elseif τ1<τ2
-        G12,G21=G12FF(model,s,τ2,τ1)
+        G21,G12=G12FF(model,s,τ2,τ1)
         return G12,G21
     end
     
