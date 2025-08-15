@@ -1,5 +1,5 @@
 function EK(model,G)
-    return model.t*(-2*model.t*sum(model.K.*real(G)))/model.Ns
+    return (-2*model.t*sum(model.K.*real(G)))/model.Ns
 end
 
 function NN(model,G)

@@ -113,6 +113,7 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
     
         for i in 1:size(G)[1]
             G[i,:,:]=I(model.Ns)-UR[i,:,:]*inv(UL[i,:,:]*UR[i,:,:])*UL[i,:,:]
+            #####################################################################
             # if i <size(G)[1]
             #     if norm(Gτ(model,s,τ2+(i-1)*model.BatchSize)-G[i,:,:])>1e-3
             #         error("$i Gt")
@@ -122,7 +123,9 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
             #         error("$i Gt")
             #     end
             # end
+            #####################################################################
         end
+
 
         G12=I(model.Ns)
         G21=-I(model.Ns)
