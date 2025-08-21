@@ -27,6 +27,6 @@ module KAPDQMC
     export ctrl_SCEEicr
 
     include("disorder_operate.jl")
-    export DO_icr
+    export DOP_icr
     
 end
