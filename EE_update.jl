@@ -1,24 +1,26 @@
 
 
-function EEICR(path::String,model::_Hubbard_Para,index::Vector{Int64},WarmSweeps::Int64,Sweeps::Int64,Nλ::Int64,ss::Vector{Matrix{UInt8}})
-    
-    ss[1]=phy_update(path,model,div(WarmSweeps,2),div(WarmSweeps,2),ss[1])
-    ss[2]=phy_update(path,model,div(WarmSweeps,2),div(WarmSweeps,2),ss[2])
-    
-    λ=[i/Nλ for i in 0:Nλ]
-
-    for i in 1:Nλ
-        ss=ctrl_EEicr(path,model,index,Sweeps,λ[i],Nλ,ss)
-    end
-end
-
-
-function ctrl_EEicr(path::String,model::_Hubbard_Para,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}})::Vector{Matrix{UInt8}}
+function ctrl_EEicr(path::String,model::_Hubbard_Para,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record::Bool)::Vector{Matrix{UInt8}}
     if model.Lattice=="SQUARE"
         name="□"
-    elseif model.Lattice=="HoneyComb"
-        name="HC"
+    elseif model.Lattice=="HoneyComb60"
+        name="HC60"
+    elseif model.Lattice=="HoneyComb120"
+        name="HC120"
     end
+
+    file="$(path)SCEEicr$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize).csv"
+    atexit() do
+        if record
+            open(file, "a") do io
+                lock(io)
+                writedlm(io, O', ',')
+                unlock(io)
+            end
+        end
+        writedlm("$(path)ss/SS$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)λ$(Int(round(Nλ*λ))).csv", [ss[1] ss[2]],",")
+    end
+
     rng=MersenneTwister(12)
     elements=(1, 2, 3, 4)
 
@@ -261,9 +263,6 @@ function ctrl_EEicr(path::String,model::_Hubbard_Para,index::Vector{Int64},Sweep
         tmpO=counter=0
 
     end
-    fid = open("$(path)EEicr$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize).csv", "a")
-    writedlm(fid,O',',')
-    close(fid)
     return ss
 end
 
@@ -271,8 +270,10 @@ end
 function EE_dir(path::String,model::_Hubbard_Para,index_arr::Vector{Vector{Int64}},WarmSweeps::Int64,Sweeps::Int64,ss::Vector{Matrix{UInt8}})::Vector{Matrix{UInt8}}
     if model.Lattice=="SQUARE"
         name="□"
-    elseif model.Lattice=="HoneyComb"
-        name="HC"
+    elseif model.Lattice=="HoneyComb60"
+        name="HC60"
+    elseif model.Lattice=="HoneyComb120"
+        name="HC120"
     end
     fid1 = open("$(path)Phy$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)BS$(model.BatchSize).csv", "a")
     fid2 = open("$(path)EEdir$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)BS$(model.BatchSize).csv", "a")

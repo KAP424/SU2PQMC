@@ -16,8 +16,11 @@ function Initial_s(model::_Hubbard_Para,rng::MersenneTwister)::Array{UInt8,2}
 end
 
 
-"equal time Green function"
+
 function Gτ(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
+    """
+    equal time Green function
+    """
     BL::Array{ComplexF64,2}=model.Pt'[:,:]
     BR::Array{ComplexF64,2}=model.Pt[:,:]
 
@@ -49,8 +52,12 @@ function Gτ(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64
 end
 
 
-"displaced Green function G(τ₁,τ₂)"
 function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
+    """
+    displaced Green function
+    return:
+        G(τ₁),G(τ₂),G(τ₁,τ₂),G(τ₂,τ₁)
+    """
     if τ1>τ2
         BBs=zeros(ComplexF64,cld(τ1-τ2,model.BatchSize),model.Ns,model.Ns)
         BBsInv=zeros(ComplexF64,size(BBs))
@@ -148,14 +155,73 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
 end
 
 
-function GroverMatrix(G1::Array{ComplexF64,2},G2::Array{ComplexF64,2})::Array{ComplexF64,2}
+function GroverMatrix(G1,G2)
     II=I(size(G1)[1])
     return G1*G2+(II-G1)*(II-G2)
 end
 
+function Free_G(Lattice,site,Θ,Initial)
+    """
+    input:
+        Lattice: "HoneyComb" or "SQUARE"
+        site: [Int64,Int64]
+        Θ: Float64
+        Initial: "H0" or "V"
+    return Green function with Free Hubbard Hamiltonian from H0 initial state or SDW initial state 
+    """
+    K=K_Matrix(Lattice,site)
+    Ns=size(K)[1]
+    
+
+    Δt=0.1
+    Nt=div(Θ,Δt)
+
+    μ=0.01
+    if occursin("HoneyComb", Lattice)
+        K+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
+    elseif Lattice=="SQUARE"
+        for i in 1:Ns
+            x,y=i_xy(Lattice,site,i)
+            K[i,i]+=μ*(-1)^(x+y)
+        end
+    end
+
+    E,V=eigen(K)
+    eK=V*diagm(exp.(-Δt.*E))*V'
+
+    if Initial=="H0"
+        Pt=V[:,1:div(Ns,2)]
+    elseif Initial=="V" 
+        Pt=zeros(Float64,Ns,Int(Ns/2))
+        for i in 1:Int(Ns/2)
+            Pt[i*2,i]=1
+        end
+    end
+
+    BL=Pt'[:,:]
+    BR=Pt[:,:]
+
+    count=0
+    for i in 1:Nt
+        BL=BL*eK
+        BR=eK*BR
+        count+=1
+        if count==10
+            counter=0
+            BL=Matrix(qr(BL').Q)'
+            BR=Matrix(qr(BR).Q)
+        end
+    end
+
+    return I(Ns)-BR*inv(BL*BR)*BL
+end
 
 function G12FF(model,s,τ1,τ2)
-    
+    """
+    Debug G(τ1,τ2) Green function
+    Without numerical stablility
+    Only for short time debug!!!
+    """
     if τ1>τ2
         G=Gτ(model,s,τ2)
         BBs=I(model.Ns)

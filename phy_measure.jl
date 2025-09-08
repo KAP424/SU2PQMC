@@ -88,7 +88,7 @@ function CzzofSpin(model,G)
 
         end
 
-    elseif  model.Lattice=="HoneyComb"
+    elseif  occursin("HoneyComb", model.Lattice)
         Lx=model.site[1]
         Ly=model.site[2]
         C=zeros(Float64,Lx,Ly)

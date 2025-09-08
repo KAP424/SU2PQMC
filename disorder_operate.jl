@@ -2,8 +2,10 @@
 function SC_DOP(path::String,model::_Hubbard_Para,ω,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,s::Matrix{UInt8},record)::Matrix{UInt8}
     if model.Lattice=="SQUARE"
         name="□"
-    elseif model.Lattice=="HoneyComb"
-        name="HC"
+    elseif model.Lattice=="HoneyComb60"
+        name="HC60"
+    elseif model.Lattice=="HoneyComb120"
+        name="HC120"
     end
     file="$(path)SCDOP$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize)ω$(round(ω,digits=2)).csv"
     atexit() do
@@ -195,8 +197,10 @@ end
 function DOP_icr(path::String,model::_Hubbard_Para,ω,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,s::Matrix{UInt8},record)::Matrix{UInt8}
     if model.Lattice=="SQUARE"
         name="□"
-    elseif model.Lattice=="HoneyComb"
-        name="HC"
+    elseif model.Lattice=="HoneyComb60"
+        name="HC60"
+    elseif model.Lattice=="HoneyComb120"
+        name="HC120"
     end
     file="$(path)DOP$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize)ω$(round(ω,digits=2))N$(length(index)).csv"
     

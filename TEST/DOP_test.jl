@@ -6,7 +6,7 @@ using LinearAlgebra
 using Random
 rng=MersenneTwister(1)
 
-t=1;   Lattice="HoneyComb"    
+t=1;   Lattice="HoneyComb120"    
 U=8;     Δt=0.1;     Θ=0.3;
 BatchSize=10;
   
@@ -32,3 +32,8 @@ Nλ=2
 Sweeps=1
 ω=π/2
 s=SC_DOP(path,model,ω,indexA,indexB,Sweeps,λ,Nλ,s,true)
+
+
+path="kap/a"
+
+path=path*"/"
