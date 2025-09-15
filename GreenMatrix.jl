@@ -168,22 +168,29 @@ function Free_G(Lattice,site,Θ,Initial)
         Θ: Float64
         Initial: "H0" or "V"
     return Green function with Free Hubbard Hamiltonian from H0 initial state or SDW initial state 
+    对于得到H0初态(平衡态结果)
+    必须要对H0加一个极其微弱的交错化学势,以去除基态简并,从而得到正确的结果
     """
     K=K_Matrix(Lattice,site)
     Ns=size(K)[1]
     
 
     Δt=0.1
-    Nt=div(Θ,Δt)
+    Nt=Int(round(Θ/Δt))
 
-    μ=0.01
-    if occursin("HoneyComb", Lattice)
-        K+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
-    elseif Lattice=="SQUARE"
-        for i in 1:Ns
-            x,y=i_xy(Lattice,site,i)
-            K[i,i]+=μ*(-1)^(x+y)
+    if Initial=="H0"
+        KK=K[:,:]
+        μ=1e-5
+        if occursin("HoneyComb", Lattice)
+            KK+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
+        elseif Lattice=="SQUARE"
+            for i in 1:Ns
+                x,y=i_xy(Lattice,site,i)
+                KK[i,i]+=μ*(-1)^(x+y)
+            end
         end
+        E,V=eigen(KK)
+        Pt=V[:,1:div(Ns,2)]
     end
 
     E,V=eigen(K)
@@ -244,5 +251,4 @@ function G12FF(model,s,τ1,τ2)
     end
     
 end
-
 

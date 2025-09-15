@@ -3,10 +3,8 @@
 function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record)
     if model.Lattice=="SQUARE"
         name="□"
-    elseif model.Lattice=="HoneyComb60"
-        name="HC60"
-    elseif model.Lattice=="HoneyComb120"
-        name="HC120"
+    elseif occursin("HoneyComb", model.Lattice)
+        name="HC"
     end
     file="$(path)SCEEicr$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize).csv"
     
