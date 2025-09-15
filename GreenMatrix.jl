@@ -160,6 +160,7 @@ function GroverMatrix(G1,G2)
     return G1*G2+(II-G1)*(II-G2)
 end
 
+
 function Free_G(Lattice,site,Θ,Initial)
     """
     input:
@@ -173,7 +174,6 @@ function Free_G(Lattice,site,Θ,Initial)
     """
     K=K_Matrix(Lattice,site)
     Ns=size(K)[1]
-    
 
     Δt=0.1
     Nt=Int(round(Θ/Δt))
