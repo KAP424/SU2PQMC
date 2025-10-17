@@ -1,5 +1,5 @@
 function EK(model,G)
-    return model.t*(-2*model.t*sum(model.K.*real(G)))/model.Ns
+    return (-2*model.t*sum(model.K.*real(G)))/model.Ns
 end
 
 function NN(model,G)
@@ -88,7 +88,7 @@ function CzzofSpin(model,G)
 
         end
 
-    elseif  model.Lattice=="HoneyComb"
+    elseif  occursin("HoneyComb", model.Lattice)
         Lx=model.site[1]
         Ly=model.site[2]
         C=zeros(Float64,Lx,Ly)

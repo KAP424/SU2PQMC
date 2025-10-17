@@ -1,5 +1,119 @@
 # 2d Trotter Decomposition
 
+function BM_F(model::_Hubbard_Para,s::Array{UInt8,2},idx::Int64)::Array{ComplexF64,2}
+    """
+    包头不包尾
+    """
+    if idx> ceil(model.Nt/model.BatchSize) || idx<1
+        error("idx out of range")
+    end
+    τ1=(idx-1)*model.BatchSize+1
+    τ2=min(idx*model.BatchSize,model.Nt)
+
+    BM=I(model.Ns)
+    for lt in τ1:τ2
+        # println(lt," ads")
+        D=[model.η[x] for x in s[:,lt]]
+        BM=diagm(exp.(1im*model.α.*D))*model.eK*BM
+    end
+
+    return BM
+end
+
+function Gτ(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
+
+    BL=model.Pt'[:,:]
+    BR=model.Pt[:,:]
+
+    for i in size(model.BMs,1):-1:Int(round(τ/model.BatchSize))+1
+        # println("BL ",i)
+        BL=Matrix(qr( (BL*model.BMs[i,:,:])').Q)'
+    end
+
+
+    if Int(round(τ/model.BatchSize))*model.BatchSize<τ
+        for lt in Int(round(τ/model.BatchSize))*model.BatchSize+1:τ
+            # println("remove ",lt)
+            D=[model.η[x] for x in s[:,lt]]
+            BL=BL*model.eKinv*diagm(exp.(-1im*model.α.*D))
+        end
+    else
+        for lt in Int(round(τ/model.BatchSize))*model.BatchSize:-1:τ+1
+            # println("add ",lt)
+            D=[model.η[x] for x in s[:,lt]]
+            BL=BL*diagm(exp.(1im*model.α.*D))*model.eK
+        end
+    end
+
+
+    for i in 1:Int(round(τ/model.BatchSize))
+        # println("BR ",i)
+        BR=Matrix(qr(model.BMs[i,:,:]*BR).Q)
+    end
+
+    if Int(round(τ/model.BatchSize))*model.BatchSize>τ
+        for lt in Int(round(τ/model.BatchSize))*model.BatchSize:-1:τ+1
+            # println("remove ",lt)
+            D=[model.η[x] for x in s[:,lt]]
+            BR=model.eKinv*diagm(exp.(-1im*model.α.*D))*BR
+        end
+    else
+        for lt in Int(round(τ/model.BatchSize))*model.BatchSize+1:τ
+            # println("add ",lt)
+            D=[model.η[x] for x in s[:,lt]]
+            BR=diagm(exp.(1im*model.α.*D))*model.eK*BR
+        end
+    end
+
+
+    BL=Matrix(qr(BL').Q)'
+    BR=Matrix(qr(BR).Q)
+
+    return I(model.Ns)-BR*inv(BL*BR)*BL
+
+end
+
+# function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
+#     if τ1<τ2
+#         idx1=ceil(τ1/model.BatchSize)
+#         idx2=floor(τ2/model.BatchSize)
+
+#         BL=zeros(ComplexF64,1+idx2-idx1,model.Ns,model.Ns)
+#         BR=zeros(ComplexF64,1+idx2-idx1,model.Ns,model.Ns)
+
+#         for i in 1:Int(round(τ1/model.BatchSize))
+#             # println("BR ",i)
+#             BR=Matrix(qr(model.BMs[i,:,:]*BR).Q)
+#         end
+    
+#         if Int(round(τ/model.BatchSize))*model.BatchSize>τ
+#             for lt in Int(round(τ/model.BatchSize))*model.BatchSize:-1:τ+1
+#                 # println("remove ",lt)
+#                 D=[model.η[x] for x in s[:,lt]]
+#                 BR=model.eKinv*diagm(exp.(-1im*model.α.*D))*BR
+#             end
+#         else
+#             for lt in Int(round(τ/model.BatchSize))*model.BatchSize+1:τ
+#                 # println("add ",lt)
+#                 D=[model.η[x] for x in s[:,lt]]
+#                 BR=diagm(exp.(1im*model.α.*D))*model.eK*BR
+#             end
+#         end
+
+
+#         BR1
+
+#     elseif τ1>τ2
+#         G2,G1,G21,G12=G4(model,s,τ2,τ1)
+#         return G1,G2,G12,G21
+#     else
+#         G=Gτ(model,s,τ1)
+#         return G,G,-(I(model.Ns)-G),G
+    
+#     end
+# end
+
+
 function Initial_s(model::_Hubbard_Para,rng::MersenneTwister)::Array{UInt8,2}
     sp=Random.Sampler(rng,[1,2,3,4])
 
@@ -16,8 +130,10 @@ function Initial_s(model::_Hubbard_Para,rng::MersenneTwister)::Array{UInt8,2}
 end
 
 
-"equal time Green function"
-function Gτ(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
+function Gτ_old(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
+    """
+    equal time Green function
+    """
     BL::Array{ComplexF64,2}=model.Pt'[:,:]
     BR::Array{ComplexF64,2}=model.Pt[:,:]
 
@@ -49,8 +165,12 @@ function Gτ(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64
 end
 
 
-"displaced Green function G(τ₁,τ₂)"
 function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
+    """
+    displaced Green function
+    return:
+        G(τ₁),G(τ₂),G(τ₁,τ₂),G(τ₂,τ₁)
+    """
     if τ1>τ2
         BBs=zeros(ComplexF64,cld(τ1-τ2,model.BatchSize),model.Ns,model.Ns)
         BBsInv=zeros(ComplexF64,size(BBs))
@@ -72,7 +192,7 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
                 UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
             end
         end
-        UR[1,:,:]=UR[1,:,:]
+        # UR[1,:,:]=UR[1,:,:]
         UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
     
         counter=0
@@ -85,7 +205,7 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
                 UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
             end
         end
-        UL[end,:,:]=UL[end,:,:]
+        # UL[end,:,:]=UL[end,:,:]
         UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
     
         for i in 1:size(BBs)[1]-1
@@ -113,6 +233,7 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
     
         for i in 1:size(G)[1]
             G[i,:,:]=I(model.Ns)-UR[i,:,:]*inv(UL[i,:,:]*UR[i,:,:])*UL[i,:,:]
+            #####################################################################
             # if i <size(G)[1]
             #     if norm(Gτ(model,s,τ2+(i-1)*model.BatchSize)-G[i,:,:])>1e-3
             #         error("$i Gt")
@@ -122,7 +243,9 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
             #         error("$i Gt")
             #     end
             # end
+            #####################################################################
         end
+
 
         G12=I(model.Ns)
         G21=-I(model.Ns)
@@ -145,14 +268,80 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
 end
 
 
-function GroverMatrix(G1::Array{ComplexF64,2},G2::Array{ComplexF64,2})::Array{ComplexF64,2}
+function GroverMatrix(G1,G2)
     II=I(size(G1)[1])
     return G1*G2+(II-G1)*(II-G2)
 end
 
 
+function Free_G(Lattice,site,Θ,Initial)
+    """
+    input:
+        Lattice: "HoneyComb" or "SQUARE"
+        site: [Int64,Int64]
+        Θ: Float64
+        Initial: "H0" or "V"
+    return Green function with Free Hubbard Hamiltonian from H0 initial state or SDW initial state 
+    对于得到H0初态(平衡态结果)
+    必须要对H0加一个极其微弱的交错化学势,以去除基态简并,从而得到正确的结果
+    """
+    K=K_Matrix(Lattice,site)
+    Ns=size(K)[1]
+
+    Δt=0.1
+    Nt=Int(round(Θ/Δt))
+
+    if Initial=="H0"
+        KK=K[:,:]
+        μ=1e-5
+        if occursin("HoneyComb", Lattice)
+            KK+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
+        elseif Lattice=="SQUARE"
+            for i in 1:Ns
+                x,y=i_xy(Lattice,site,i)
+                KK[i,i]+=μ*(-1)^(x+y)
+            end
+        end
+        E,V=eigen(KK)
+        Pt=V[:,1:div(Ns,2)]
+    end
+
+    E,V=eigen(K)
+    eK=V*diagm(exp.(-Δt.*E))*V'
+
+    if Initial=="H0"
+        Pt=V[:,1:div(Ns,2)]
+    elseif Initial=="V" 
+        Pt=zeros(Float64,Ns,Int(Ns/2))
+        for i in 1:Int(Ns/2)
+            Pt[i*2,i]=1
+        end
+    end
+
+    BL=Pt'[:,:]
+    BR=Pt[:,:]
+
+    count=0
+    for i in 1:Nt
+        BL=BL*eK
+        BR=eK*BR
+        count+=1
+        if count==10
+            counter=0
+            BL=Matrix(qr(BL').Q)'
+            BR=Matrix(qr(BR).Q)
+        end
+    end
+
+    return I(Ns)-BR*inv(BL*BR)*BL
+end
+
 function G12FF(model,s,τ1,τ2)
-    
+    """
+    Debug G(τ1,τ2) Green function
+    Without numerical stablility
+    Only for short time debug!!!
+    """
     if τ1>τ2
         G=Gτ(model,s,τ2)
         BBs=I(model.Ns)
@@ -170,10 +359,9 @@ function G12FF(model,s,τ1,τ2)
 
         return G12,G21
     elseif τ1<τ2
-        G12,G21=G12FF(model,s,τ2,τ1)
+        G21,G12=G12FF(model,s,τ2,τ1)
         return G12,G21
     end
     
 end
-
 

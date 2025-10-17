@@ -11,6 +11,10 @@ function phy_update(path::String,model::_Hubbard_Para,WarmSweeps::Int64,Sweeps::
 
     counter=0
 
+    for idx in 1:size(BMs,1)
+        model.BMs[idx,:,:]=BM_F(model,s,idx)
+    end
+
     G=zeros(ComplexF64,model.Ns,model.Ns)
     for loop in 1:Sweeps+WarmSweeps
         for lt in 1:model.Nt

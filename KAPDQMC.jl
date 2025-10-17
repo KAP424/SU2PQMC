@@ -1,5 +1,3 @@
-# dev branch test
-
 module KAPDQMC
     using Base.Filesystem
     using LinearAlgebra
@@ -14,7 +12,7 @@ module KAPDQMC
     export Hubbard_Para,_Hubbard_Para,setμ
 
     include("GreenMatrix.jl")
-    export Gτ,G4,Initial_s,G12FF,GroverMatrix
+    export Gτ,G4,Initial_s,G12FF,GroverMatrix,Free_G,BM_F,Gτ_old
 
     include("phy_measure.jl")
     export EK,NN,Magnetism,CzzofSpin
@@ -29,6 +27,6 @@ module KAPDQMC
     export ctrl_SCEEicr
 
     include("disorder_operate.jl")
-    export DO_icr
+    export DOP_icr,SC_DOP
     
 end

@@ -20,6 +20,7 @@ mutable struct _Hubbard_Para
     eK::Array{Float64,2}
     HalfeKinv::Array{Float64,2}
     eKinv::Array{Float64,2}
+    BMs::Array{ComplexF64,3}  # Number_of_BM*Ns*Ns
 end
 
 function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
@@ -30,23 +31,10 @@ function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
     γ::Vector{Float64}=[1+sqrt(6)/3,1+sqrt(6)/3,1-sqrt(6)/3,1-sqrt(6)/3]
     η::Vector{Float64}=[sqrt(2*(3-sqrt(6))),-sqrt(2*(3-sqrt(6))),sqrt(2*(3+sqrt(6))),-sqrt(2*(3+sqrt(6)))]
     
-    K::Array{Float64,2}=t.*K_Matrix(Lattice,site)
+    K::Array{Float64,2}=K_Matrix(Lattice,site)
     Ns::Int64=size(K)[1]
 
-    # 交错化学势，打开gap，去兼并
-    μ=0.0
-    if Lattice=="HoneyComb"
-        K+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
-    elseif Lattice=="SQUARE"
-        for i in 1:Ns
-            x,y=i_xy(Lattice,site,i)
-            K[i,i]+=μ*(-1)^(x+y)
-        end
-    end
-    # K[K .!= 0] .+=( rand(size(K)...) * 0.1)[K.!= 0]
-    # K=(K+K')./2
-
-    E,V=eigen(K)
+    E,V=eigen(t*K)
     
     HalfeK=V*diagm(exp.(-Δt.*E./2))*V'
     eK=V*diagm(exp.(-Δt.*E))*V'
@@ -54,7 +42,21 @@ function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
     eKinv=V*diagm(exp.(Δt.*E))*V'
 
     if Initial=="H0"
+        # 交错化学势，打开gap，去兼并
+        KK=K[:,:]
+        μ=1e-5
+        if occursin("HoneyComb", Lattice)
+            KK+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
+        elseif Lattice=="SQUARE"
+            for i in 1:Ns
+                x,y=i_xy(Lattice,site,i)
+                KK[i,i]+=μ*(-1)^(x+y)
+            end
+        end
+        E,V=eigen(KK)
         Pt=V[:,1:div(Ns,2)]
+        # K[K .!= 0] .+=( rand(size(K)...) * 0.1)[K.!= 0]
+        # K=(K+K')./2
     elseif Initial=="V" 
         Pt=zeros(Float64,Ns,Int(Ns/2))
         for i in 1:Int(Ns/2)
@@ -62,7 +64,10 @@ function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
         end
     end
 
-    return _Hubbard_Para(Lattice,t,U,site,Θ,Ns,Nt,K,BatchSize,WrapTime,Δt,α,γ,η,Pt,HalfeK,eK,HalfeKinv,eKinv)
+    BMs=zeros(ComplexF64,Int(ceil(Nt/BatchSize)),Ns,Ns)  # Number_of_BM*Ns*Ns
+
+
+    return _Hubbard_Para(Lattice,t,U,site,Θ,Ns,Nt,K,BatchSize,WrapTime,Δt,α,γ,η,Pt,HalfeK,eK,HalfeKinv,eKinv,BMs)
 
 end
 
