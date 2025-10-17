@@ -1,5 +1,10 @@
-SCEE 函数实现OK
+以 $\Theta$ 为中心，向左右建立nodes， 间隔BatchSize
 
-ctrl_EEicr record未添加，ss未记录
+每经过一个node， 计算一次 BL , BR
 
-phy_update 未实例使用
+
+创建变长数组 subnodes 记录 $\tau, \Theta$ 间的 nodes
+
+BLM,BRM 的长度为 length(subnodes)
+
+
