@@ -180,7 +180,7 @@ function Free_G(Lattice,site,Θ,Initial)
 
     if Initial=="H0"
         KK=K[:,:]
-        μ=1e-5
+        μ=1e-3
         if occursin("HoneyComb", Lattice)
             KK+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
         elseif Lattice=="SQUARE"
@@ -213,7 +213,7 @@ function Free_G(Lattice,site,Θ,Initial)
         BL=BL*eK
         BR=eK*BR
         count+=1
-        if count==10
+        if count==5
             counter=0
             BL=Matrix(qr(BL').Q)'
             BR=Matrix(qr(BR).Q)

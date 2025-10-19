@@ -10,7 +10,7 @@ function nn2idx(Lattice::String,site::Vector{Int64},idx::Int64)
             nn[3]=xy_i(Lattice,site,mod1(x,site[1]),mod1(y+1,site[2]))
             nn[4]=xy_i(Lattice,site,mod1(x,site[1]),mod1(y-1,site[2]))
         else
-            nn=[location[1]-1,location[1]+1]
+            nn=[mod1(idx-1,site[1]),mod1(idx+1,site[1])]
         end
 
     elseif  Lattice=="HoneyComb120"

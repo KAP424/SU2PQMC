@@ -43,7 +43,7 @@ function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
     if Initial=="H0"
         # 交错化学势，打开gap，去兼并
         KK=K[:,:]
-        μ=1e-5
+        μ=1e-4
         if occursin("HoneyComb", Lattice)
             KK+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
         elseif Lattice=="SQUARE"
