@@ -312,7 +312,7 @@ function G12FF(model,s,τ1,τ2)
     Only for short time debug!!!
     """
     if τ1>τ2
-        G=Gτ(model,s,τ2)
+        G=Gτ_old(model,s,τ2)
         BBs=I(model.Ns)
         BBsInv=I(model.Ns)
 

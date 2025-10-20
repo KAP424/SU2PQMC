@@ -108,7 +108,7 @@ indexB=area_index(Lattice,site,([1,1],[div(L,3),div(2*L,3)]))
 ss=[s[:,:],s[:,:]]
 λ=0.5
 Nλ=2
-Sweeps=1
+Sweeps=3
 ctrl_SCEEicr(path,model,indexA,indexB,Sweeps,λ,Nλ,ss,false)
 
 # ss=ctrl_EEicr(path,model,indexA,10,0.0,1,ss,true)

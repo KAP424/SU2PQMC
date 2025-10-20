@@ -11,7 +11,8 @@ U=3.8;     Δt=0.1;     Θ=3.0;
 BatchSize=10;
 Sweeps=1
 L=15
-# 1025.714 seconds
+# OLD 1025.714 seconds
+# NEW 886.15 seconds
 
 site=[L,L]
 

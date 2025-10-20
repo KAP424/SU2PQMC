@@ -1,8 +1,12 @@
 function phy_update(path::String,model::_Hubbard_Para,WarmSweeps::Int64,Sweeps::Int64,s::Array{UInt8,2})
     if model.Lattice=="SQUARE"
         name="□"
-    elseif model.Lattice=="HoneyComb"
-        name="HC"
+    elseif model.Lattice=="HoneyComb60"
+        name="HC60"
+    elseif model.Lattice=="HoneyComb120"
+        name="HC120"
+    else
+        error("Lattice: $(model.Lattice) is not allowed !")
     end
     rng=MersenneTwister(Threads.threadid())
     elements=(1, 2, 3, 4)
@@ -11,15 +15,11 @@ function phy_update(path::String,model::_Hubbard_Para,WarmSweeps::Int64,Sweeps::
 
     counter=0
 
-    for idx in 1:size(BMs,1)
-        model.BMs[idx,:,:]=BM_F(model,s,idx)
-    end
-
     G=zeros(ComplexF64,model.Ns,model.Ns)
     for loop in 1:Sweeps+WarmSweeps
         for lt in 1:model.Nt
             if mod(lt,model.WrapTime)==1
-                G=Gτ(model,s,lt)
+                G=Gτ_old(model,s,lt)
             else
                 D=[model.η[x] for x in s[:,lt]]
                 G=diagm(exp.(1im*model.α.*D))*model.eK *G* model.eKinv*diagm(exp.(-1im*model.α.*D))
@@ -95,7 +95,7 @@ function phy_update(path::String,model::_Hubbard_Para,WarmSweeps::Int64,Sweeps::
 
         for lt in model.Nt-1:-1:1
             if mod(lt,model.WrapTime)==1
-                G=Gτ(model,s,lt)
+                G=Gτ_old(model,s,lt)
             else
                 D=[model.η[x] for x in s[:,lt+1]]
                 G=model.eKinv*diagm(exp.(-1im*model.α.*D)) *G* diagm(exp.(1im*model.α.*D))*model.eK 
