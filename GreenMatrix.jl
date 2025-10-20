@@ -2,17 +2,14 @@
 
 function BM_F(model::_Hubbard_Para,s::Array{UInt8,2},idx::Int64)::Array{ComplexF64,2}
     """
-    包头不包尾
+    不包头包尾
     """
-    if idx> ceil(model.Nt/model.BatchSize) || idx<1
+    if idx> length(model.nodes) || idx<1
         error("idx out of range")
     end
-    τ1=(idx-1)*model.BatchSize+1
-    τ2=min(idx*model.BatchSize,model.Nt)
-
+    
     BM=I(model.Ns)
-    for lt in τ1:τ2
-        # println(lt," ads")
+    for lt in model.nodes[idx]+1:model.nodes[idx+1]
         D=[model.η[x] for x in s[:,lt]]
         BM=diagm(exp.(1im*model.α.*D))*model.eK*BM
     end
@@ -20,99 +17,71 @@ function BM_F(model::_Hubbard_Para,s::Array{UInt8,2},idx::Int64)::Array{ComplexF
     return BM
 end
 
-function Gτ(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
-
-    BL=model.Pt'[:,:]
-    BR=model.Pt[:,:]
-
-    for i in size(model.BMs,1):-1:Int(round(τ/model.BatchSize))+1
-        # println("BL ",i)
-        BL=Matrix(qr( (BL*model.BMs[i,:,:])').Q)'
+function BMinv_F(model::_Hubbard_Para,s::Array{UInt8,2},idx::Int64)::Array{ComplexF64,2}
+    """
+    不包头包尾
+    """
+    if idx> length(model.nodes) || idx<1
+        error("idx out of range")
+    end
+    
+    BMinv=I(model.Ns)
+    for lt in model.nodes[idx]+1:model.nodes[idx+1]
+        D=[model.η[x] for x in s[:,lt]]
+        BMinv=BMinv*model.eKinv*diagm(exp.(-1im*model.α.*D))
     end
 
-
-    if Int(round(τ/model.BatchSize))*model.BatchSize<τ
-        for lt in Int(round(τ/model.BatchSize))*model.BatchSize+1:τ
-            # println("remove ",lt)
-            D=[model.η[x] for x in s[:,lt]]
-            BL=BL*model.eKinv*diagm(exp.(-1im*model.α.*D))
-        end
-    else
-        for lt in Int(round(τ/model.BatchSize))*model.BatchSize:-1:τ+1
-            # println("add ",lt)
-            D=[model.η[x] for x in s[:,lt]]
-            BL=BL*diagm(exp.(1im*model.α.*D))*model.eK
-        end
-    end
-
-
-    for i in 1:Int(round(τ/model.BatchSize))
-        # println("BR ",i)
-        BR=Matrix(qr(model.BMs[i,:,:]*BR).Q)
-    end
-
-    if Int(round(τ/model.BatchSize))*model.BatchSize>τ
-        for lt in Int(round(τ/model.BatchSize))*model.BatchSize:-1:τ+1
-            # println("remove ",lt)
-            D=[model.η[x] for x in s[:,lt]]
-            BR=model.eKinv*diagm(exp.(-1im*model.α.*D))*BR
-        end
-    else
-        for lt in Int(round(τ/model.BatchSize))*model.BatchSize+1:τ
-            # println("add ",lt)
-            D=[model.η[x] for x in s[:,lt]]
-            BR=diagm(exp.(1im*model.α.*D))*model.eK*BR
-        end
-    end
-
-
-    BL=Matrix(qr(BL').Q)'
-    BR=Matrix(qr(BR).Q)
-
-    return I(model.Ns)-BR*inv(BL*BR)*BL
-
+    return BMinv
 end
 
-# function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
-#     if τ1<τ2
-#         idx1=ceil(τ1/model.BatchSize)
-#         idx2=floor(τ2/model.BatchSize)
+function G4(nodes,idx,BLMs,BRMs,BMs,BMinvs)
+    II=I(size(BMs,2))
+    Θidx=div(length(nodes),2)+1
+    Gt=II-BRMs[idx,:,:] * inv( BLMs[idx,:,:] * BRMs[idx,:,:] ) * BLMs[idx,:,:]
+    Gt0=II
+    G0t=II
+    if idx<Θidx
+        G0=II-BRMs[Θidx,:,:] * inv( BLMs[Θidx,:,:] * BRMs[Θidx,:,:] ) * BLMs[Θidx,:,:]
+        for j in idx:Θidx-1
+            if j==idx
+                tmp=II-Gt
+            else
+                tmp=BRMs[j,:,:] *inv(BLMs[j,:,:] * BRMs[j,:,:])*BLMs[j,:,:]
+            end
+            Gt0= Gt0* tmp*BMinvs[j,:,:]
+            G0t= BMs[j,:,:]*(II-tmp) * G0t
+        end
+        Gt0=-Gt0
+    elseif idx>Θidx
+        G0=II-BRMs[Θidx,:,:] * inv( BLMs[Θidx,:,:] * BRMs[Θidx,:,:] ) * BLMs[Θidx,:,:]
+        for j in Θidx:idx-1
+            if j==Θidx
+                tmp=II-G0
+            else
+                tmp=BRMs[j,:,:]*inv(BLMs[j,:,:] * BRMs[j,:,:])* BLMs[j,:,:]
+            end
+            G0t= G0t* tmp*BMinvs[j,:,:]
+            Gt0= BMs[j,:,:]*(II-tmp) * Gt0 
+        end
+        G0t=-G0t
+    else
+        G0=Gt[:,:]
+        Gt0=-(II-Gt)
+        G0t=Gt[:,:]
+    end
+    return Gt,G0,Gt0,G0t
+end
 
-#         BL=zeros(ComplexF64,1+idx2-idx1,model.Ns,model.Ns)
-#         BR=zeros(ComplexF64,1+idx2-idx1,model.Ns,model.Ns)
 
-#         for i in 1:Int(round(τ1/model.BatchSize))
-#             # println("BR ",i)
-#             BR=Matrix(qr(model.BMs[i,:,:]*BR).Q)
-#         end
-    
-#         if Int(round(τ/model.BatchSize))*model.BatchSize>τ
-#             for lt in Int(round(τ/model.BatchSize))*model.BatchSize:-1:τ+1
-#                 # println("remove ",lt)
-#                 D=[model.η[x] for x in s[:,lt]]
-#                 BR=model.eKinv*diagm(exp.(-1im*model.α.*D))*BR
-#             end
-#         else
-#             for lt in Int(round(τ/model.BatchSize))*model.BatchSize+1:τ
-#                 # println("add ",lt)
-#                 D=[model.η[x] for x in s[:,lt]]
-#                 BR=diagm(exp.(1im*model.α.*D))*model.eK*BR
-#             end
-#         end
-
-
-#         BR1
-
-#     elseif τ1>τ2
-#         G2,G1,G21,G12=G4(model,s,τ2,τ1)
-#         return G1,G2,G12,G21
-#     else
-#         G=Gτ(model,s,τ1)
-#         return G,G,-(I(model.Ns)-G),G
-    
-#     end
-# end
-
+function Gτ(nodes,lt,BLMs,BRMs)
+    II=I(size(BLMs,3))
+    idx=findfirst(nodes .== lt)
+    if isnothing(idx)
+        error("lt not in nodes")
+    end
+    G=II-BRMs[idx,:,:] * inv( BLMs[idx,:,:] * BRMs[idx,:,:] ) * BLMs[idx,:,:]
+    return G
+end
 
 function Initial_s(model::_Hubbard_Para,rng::MersenneTwister)::Array{UInt8,2}
     sp=Random.Sampler(rng,[1,2,3,4])
@@ -165,7 +134,7 @@ function Gτ_old(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{Comple
 end
 
 
-function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
+function G4_old(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
     """
     displaced Green function
     return:
@@ -257,10 +226,10 @@ function G4(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
         return G[end,:,:],G[1,:,:],G12,G21
     
     elseif τ1<τ2
-        G2,G1,G21,G12=G4(model,s,τ2,τ1)
+        G2,G1,G21,G12=G4_old(model,s,τ2,τ1)
         return G1,G2,G12,G21
     else
-        G=Gτ(model,s,τ1)
+        G=Gτ_old(model,s,τ1)
         return G,G,-(I(model.Ns)-G),G
     
     end

@@ -20,7 +20,7 @@ mutable struct _Hubbard_Para
     eK::Array{Float64,2}
     HalfeKinv::Array{Float64,2}
     eKinv::Array{Float64,2}
-    BMs::Array{ComplexF64,3}  # Number_of_BM*Ns*Ns
+    nodes::Vector{Int64}
 end
 
 function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
@@ -64,10 +64,13 @@ function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
         end
     end
 
-    BMs=zeros(ComplexF64,Int(ceil(Nt/BatchSize)),Ns,Ns)  # Number_of_BM*Ns*Ns
+    if div(Nt,2)%BatchSize==0
+        nodes=collect(0:BatchSize:Nt)
+    else
+        nodes=vcat(0 , reverse(collect(div(Nt,2)-BatchSize :-BatchSize:1 ) ) , collect(div(Nt,2):BatchSize:Nt) , Nt )
+    end
 
-
-    return _Hubbard_Para(Lattice,t,U,site,Θ,Ns,Nt,K,BatchSize,WrapTime,Δt,α,γ,η,Pt,HalfeK,eK,HalfeKinv,eKinv,BMs)
+    return _Hubbard_Para(Lattice,t,U,site,Θ,Ns,Nt,K,BatchSize,WrapTime,Δt,α,γ,η,Pt,HalfeK,eK,HalfeKinv,eKinv,nodes)
 
 end
 

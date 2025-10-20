@@ -12,7 +12,7 @@ module KAPDQMC
     export Hubbard_Para,_Hubbard_Para,setμ
 
     include("GreenMatrix.jl")
-    export Gτ,G4,Initial_s,G12FF,GroverMatrix,Free_G,BM_F,Gτ_old
+    export Gτ,G4,Initial_s,G12FF,GroverMatrix,Free_G,BM_F,BMinv_F,Gτ_old,G4_old
 
     include("phy_measure.jl")
     export EK,NN,Magnetism,CzzofSpin
