@@ -7,16 +7,16 @@ using Random
 rng=MersenneTwister(1)
 
 t=1;   Lattice="HoneyComb120"    
-U=8;     Δt=0.1;     Θ=0.8;
+U=8;     Δt=0.1;     Θ=3.8;
 BatchSize=5;
   
 
-L=3
+L=6
 site=[L,L]
 
 model=Hubbard_Para(t,U,Lattice,site,Δt,Θ,BatchSize,"V")
 
-println(model.nodes)
+# println(model.nodes)
 
 s=Initial_s(model,rng)
 
@@ -78,19 +78,6 @@ s=Initial_s(model,rng)
 
 
 # ------------------------------------------------------------------------
-# TEST for Green function
-# 
-
-# τ=model.Nt
-# # τ=1
-# G=Gτ(model,s,div(model.Nt,2))
-# Gt,G0,Gt0,G0t=G4(model,s,τ,div(model.Nt,2))
-# Gt0_,G0t_=G12FF(model,s,τ,div(model.Nt,2))
-# println(norm(Gt0-Gt0_),',',norm(G0t-G0t_))
-# Gt_=Gτ(model,s,τ)
-# G0_=Gτ(model,s,div(model.Nt,2))
-# println(norm(Gt-Gt_),',',norm(G0-G0_))
-# ------------------------------------------------------------------------
 
 
 # ------------------------------------------------------------------------
@@ -108,8 +95,9 @@ indexB=area_index(Lattice,site,([1,1],[div(L,3),div(2*L,3)]))
 ss=[s[:,:],s[:,:]]
 λ=0.5
 Nλ=2
-Sweeps=3
-ctrl_SCEEicr(path,model,indexA,indexB,Sweeps,λ,Nλ,ss,false)
+Sweeps=1
+# ctrl_SCEEicr(path,model,indexA,indexB,Sweeps,λ,Nλ,ss,false)
 
 # ss=ctrl_EEicr(path,model,indexA,10,0.0,1,ss,true)
 
+phy_update(path,model,2,2,s)

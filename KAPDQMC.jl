@@ -4,6 +4,7 @@ module KAPDQMC
     using DelimitedFiles
     using Random
     using Statistics
+    using MKL
 
     include("Geometry.jl")
     export K_Matrix,xy_i,i_xy,area_index

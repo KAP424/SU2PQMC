@@ -2,11 +2,10 @@
 
 
 function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record)
-    if model.Lattice=="SQUARE"
-        name="□"
-    elseif occursin("HoneyComb", model.Lattice)
-        name="HC"
-    end
+    name = if model.Lattice=="SQUARE" "□" 
+        elseif model.Lattice=="HoneyComb60" "HC" 
+        elseif model.Lattice=="HoneyComb120" "HC120" 
+        else error("Lattice: $(model.Lattice) is not allowed !") end    
     file="$(path)SCEEicr$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize).csv"
     
     atexit() do
@@ -20,17 +19,17 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         writedlm("$(path)ss/SS$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)λ$(Int(round(Nλ*λ))).csv", [ss[1] ss[2]],",")
     end
     
-    Gt1=zeros(ComplexF64,model.Ns,model.Ns)
-    Gt2=zeros(ComplexF64,model.Ns,model.Ns)
-    G01=zeros(ComplexF64,model.Ns,model.Ns)
-    G02=zeros(ComplexF64,model.Ns,model.Ns)
-    Gt01=zeros(ComplexF64,model.Ns,model.Ns)
-    Gt02=zeros(ComplexF64,model.Ns,model.Ns)
-    G0t1=zeros(ComplexF64,model.Ns,model.Ns)
-    G0t2=zeros(ComplexF64,model.Ns,model.Ns)
-    gmInv_A=zeros(ComplexF64,length(indexA),length(indexA))
-    gmInv_B=zeros(ComplexF64,length(indexB),length(indexB))
-    detg_A=detg_B=0
+    Gt1= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    Gt2= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    G01= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    G02= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    Gt01= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    Gt02= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    G0t1= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    G0t2= Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    gmInv_A=Matrix{ComplexF64}(undef ,length(indexA),length(indexA))
+    gmInv_B=Matrix{ComplexF64}(undef ,length(indexB),length(indexB))
+    detg_A=detg_B=0 
 
     rng=MersenneTwister(Threads.threadid()+round(Int,time()*1000))
     elements=(1, 2, 3, 4)
@@ -44,16 +43,16 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     IA=I(length(indexA))
     IB=I(length(indexB))
 
-    BMs1=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
-    BMs2=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
-    BMsinv1=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
-    BMsinv2=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
+    BMs1=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
+    BMs2=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
+    BMsinv1=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
+    BMsinv2=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
 
     for idx in axes(BMs1,1)
-        BMs1[idx,:,:]=BM_F(model,ss[1],idx)
-        BMs2[idx,:,:]=BM_F(model,ss[2],idx)
-        BMsinv1[idx,:,:]=BMinv_F(model,ss[1],idx)
-        BMsinv2[idx,:,:]=BMinv_F(model,ss[2],idx)
+        @inbounds BMs1[:,:,idx]=BM_F(model,ss[1],idx)
+        @inbounds BMs2[:,:,idx]=BM_F(model,ss[2],idx)
+        @inbounds BMsinv1[:,:,idx]=BMinv_F(model,ss[1],idx)
+        @inbounds BMsinv2[:,:,idx]=BMinv_F(model,ss[2],idx)
     end
 
     BLMs1=zeros(ComplexF64,length(model.nodes),div(model.Ns,2),model.Ns)
@@ -78,8 +77,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         println("\n ====== Sweep $loop / $Sweeps ======")
         for lt in 1:model.Nt
             if  any(model.nodes.==(lt-1)) 
-                idx= (lt==1) ? 2 : findfirst(model.nodes .== (lt-1))
                 println("\n Wrap Time: $lt")
+                idx= (lt==1) ? 2 : findfirst(model.nodes .== (lt-1))
                 BMs1[idx-1,:,:]=BM_F(model,ss[1],idx-1)
                 BMsinv1[idx-1,:,:]=BMinv_F(model,ss[1],idx-1)
                 BMs2[idx-1,:,:]=BM_F(model,ss[2],idx-1)

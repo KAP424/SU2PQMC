@@ -1,34 +1,65 @@
 # 2d Trotter Decomposition
 
-function BM_F(model::_Hubbard_Para,s::Array{UInt8,2},idx::Int64)::Array{ComplexF64,2}
+function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
     """
     不包头包尾
     """
-    if idx> length(model.nodes) || idx<1
-        error("idx out of range")
+    Ns=model.Ns
+    nodes=model.nodes
+    eK=model.eK
+    η=model.η
+    α=model.α
+
+    @assert 0< idx <=length(model.nodes)
+
+    D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
+    tmp=Matrix{ComplexF64}(undef, Ns, Ns)
+    BM=zeros(ComplexF64,Ns,Ns)
+    @inbounds for i in diagind(BM)
+        BM[i] = one(eltype(BM))
     end
-    
-    BM=I(model.Ns)
-    for lt in model.nodes[idx]+1:model.nodes[idx+1]
-        D=[model.η[x] for x in s[:,lt]]
-        BM=diagm(exp.(1im*model.α.*D))*model.eK*BM
+    for lt in nodes[idx] + 1:nodes[idx + 1]
+        @inbounds begin
+            for i in 1:Ns
+                D[i] =  cis( α *η[s[i, lt]])
+            end
+            mul!(tmp,eK, BM)
+            mul!(BM,diagm(D), tmp)
+            # BM = Diagonal(D) * eK * BM
+        end
     end
 
     return BM
 end
 
-function BMinv_F(model::_Hubbard_Para,s::Array{UInt8,2},idx::Int64)::Array{ComplexF64,2}
+function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
     """
     不包头包尾
     """
-    if idx> length(model.nodes) || idx<1
-        error("idx out of range")
-    end
+    Ns=model.Ns
+    nodes=model.nodes
+    eKinv=model.eKinv
+    η=model.η
+    α=model.α
+
+    @assert 0< idx <=length(model.nodes)
     
-    BMinv=I(model.Ns)
-    for lt in model.nodes[idx]+1:model.nodes[idx+1]
-        D=[model.η[x] for x in s[:,lt]]
-        BMinv=BMinv*model.eKinv*diagm(exp.(-1im*model.α.*D))
+    D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
+    tmp=Matrix{ComplexF64}(undef, Ns, Ns)
+    BMinv=zeros(ComplexF64,Ns,Ns)
+    @inbounds for i in diagind(BMinv)
+        BMinv[i] = one(eltype(BMinv))
+    end
+
+    for lt in nodes[idx] + 1:nodes[idx + 1]
+        @inbounds begin
+            for i in 1:Ns
+                D[i] =  cis( -α *η[s[i, lt]])
+            end
+            mul!(tmp,BMinv, eKinv)
+            mul!(BMinv,tmp,diagm(D))
+            # BMinv = BMinv * eKinv * Diagonal(D) 
+        end
     end
 
     return BMinv

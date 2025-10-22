@@ -1,176 +1,238 @@
-function phy_update(path::String,model::_Hubbard_Para,WarmSweeps::Int64,Sweeps::Int64,s::Array{UInt8,2})
-    if model.Lattice=="SQUARE"
-        name="□"
-    elseif model.Lattice=="HoneyComb60"
-        name="HC60"
-    elseif model.Lattice=="HoneyComb120"
-        name="HC120"
-    else
-        error("Lattice: $(model.Lattice) is not allowed !")
+
+
+function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweeps::Int64, s::Array{UInt8, 2})
+    Ns=model.Ns
+    ns=div(model.Ns, 2)
+    NN=length(model.nodes)
+    name = if model.Lattice=="SQUARE" "□" 
+    elseif model.Lattice=="HoneyComb60" "HC" 
+    elseif model.Lattice=="HoneyComb120" "HC120" 
+    else error("Lattice: $(model.Lattice) is not allowed !") end  
+
+    rng = MersenneTwister(Threads.threadid())
+    elements = (1, 2, 3, 4)
+    samplers_dict = Dict{UInt8, Random.Sampler}()
+    for excluded in elements
+        allowed = [i for i in elements if i != excluded]
+        samplers_dict[excluded] = Random.Sampler(rng, allowed)
     end
-    rng=MersenneTwister(Threads.threadid())
-    elements=(1, 2, 3, 4)
 
-    mA=mB=nn=R0=R1=Ek=C0=Cmax=0
+    mA = mB = nn = R0 = R1 = Ek = C0 = Cmax = 0.0
+    counter = 0
 
-    counter=0
+    II = I(model.Ns)
+    G = Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
 
-    G=zeros(ComplexF64,model.Ns,model.Ns)
-    for loop in 1:Sweeps+WarmSweeps
+    # 预分配 BL 和 BR
+    BLs = Array{ComplexF64}(undef, ns, model.Ns,NN)
+    BRs = Array{ComplexF64}(undef, model.Ns, ns,NN)
+
+    # 预分配临时数组
+    tmpN = Vector{ComplexF64}(undef, Ns)
+    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
+    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
+    tmpnn = Matrix{ComplexF64}(undef, ns, ns)
+    tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
+    tmp1N = Matrix{ComplexF64}(undef ,1, Ns)
+    # tmpN1 = Matrix{ComplexF64}(undef ,Ns ,1)
+
+    view(BRs,:,:,1) .= model.Pt
+    view(BLs,:,:,NN) .= model.Pt'
+    for idx in NN-1:-1:2
+        tmpNN.=BM_F(model, s, idx)
+        mul!(tmpnN,view(BLs,:,:,idx+1), tmpNN)
+        tmpNn.=tmpnN'
+        view(BLs,:,:,idx) .= Matrix(qr!(tmpNn).Q)'
+        # BL .= Matrix(qr((tmpnN)').Q)'
+    end
+    
+    for loop in 1:(Sweeps + WarmSweeps)
+        # println("\n Sweep: $loop ")
+        
+        tmpNN.=BM_F(model, s, 1)
+        mul!(tmpnN,view(BLs,:,:,2), tmpNN)
+        tmpNn.=tmpnN'
+        view(BLs,:,:,1) .= Matrix(qr!(tmpNn).Q)'
+
+        tmpnn .= inv(view(BLs,:,:,1) * view(BRs,:,:,1))
+        mul!(tmpNn, view(BRs,:,:,1), tmpnn)
+        mul!(tmpNN, tmpNn, view(BLs,:,:,1))
+        @fastmath G .= II - tmpNN
+        #####################################################################
+        # if norm(G-Gτ_old(model,s,0))>1e-6 
+        #     error("00000"," Wrap error:  ",norm(G-Gτ_old(model,s,0)))
+        # end
+        #####################################################################
         for lt in 1:model.Nt
-            if mod(lt,model.WrapTime)==1
-                G=Gτ_old(model,s,lt)
-            else
-                D=[model.η[x] for x in s[:,lt]]
-                G=diagm(exp.(1im*model.α.*D))*model.eK *G* model.eKinv*diagm(exp.(-1im*model.α.*D))
-                
-            #####################################################################
-                # if norm(G-Gτ(model,s,lt))>1e-6 
-                #         error("asd")
-                #     end
-            #####################################################################
+            if any(model.nodes[2:end] .== (lt - 1))
+                idx = findfirst(model.nodes .== (lt - 1))
+
+                @views tmpNN .= BM_F(model, s, idx - 1)
+                mul!(tmpNn, tmpNN, view(BRs,:,:,idx-1))
+                view(BRs,:,:,idx) .= Matrix(qr!(tmpNn).Q)
+                # BR .= Matrix(qr((BM * BR)).Q)
+
+                tmpnn .= inv(view(BLs,:,:,idx) * view(BRs,:,:,idx))
+                mul!(tmpNn, view(BRs,:,:,idx), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLs,:,:,idx))
+                @fastmath G .= II - tmpNN
             end
 
-            for x in 1:model.Ns
-                sp=Random.Sampler(rng,[i for i in elements if i != s[x,lt]])
-                sx=rand(rng,sp)
-                Δ=exp(1im*model.α*(model.η[sx]-model.η[s[x,lt]]))-1
-                r=1+Δ*(1-G[x,x])
+            @inbounds @simd for iii in 1:Ns
+                tmpN[iii] = cis( model.α *model.η[s[iii, lt]] ) 
+            end
+            mul!(tmpNN, model.eK, G)
+            mul!(G,tmpNN,model.eKinv)
+            mul!(tmpNN,Diagonal(tmpN),G)
+            conj!(tmpN)
+            mul!(G,tmpNN,Diagonal(tmpN))
+            # G= Diagonal(tmp_D) * model.eK * G * model.eKinv * Diagonal(conj(tmp_D))
+            #####################################################################
+            # if norm(G-Gτ_old(model,s,lt))>1e-6 
+            #     error(lt,"Wrap error:  ",norm(G-Gτ_old(model,s,lt)))
+            # end
+            #####################################################################
 
-            ####################################################################
-                # ss=s[:,:]
-                # ss[x,lt]=sx
-                # if abs(Poss(model,ss)/Poss(model,s)-abs2(r))>1e-3
-                #     error("sada")
-                # end
-            ####################################################################
+            @inbounds @simd for x in 1:model.Ns
+                sx = rand(rng,  samplers_dict[s[x, lt]])
+                @fastmath Δ = cis( model.α * (model.η[sx] - model.η[s[x, lt]])) - 1
+                @fastmath r = 1 + Δ * (1 - G[x, x])
 
-                if rand(rng)<model.γ[sx]/model.γ[s[x,lt]]*abs2(r)
-                    G=G-Δ/r.*(  G[:,x]    .*  transpose((I(model.Ns)-G)[x,:])   )
-                    s[x,lt]=sx
-            ####################################################################
-                    # if norm(G-Gτ(model,s,lt))>1e-6
+                if rand(rng) < model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
+                    @views tmp1N[1, :] .= -view(G,x, :)
+                    tmp1N[1, x] += 1
+                    mul!(tmpNN, view(G, :, x), tmp1N)
+                    # tmpNN .= view(G, :, x) * tmp1N
+                    @views G .= G - Δ / r .* tmpNN
+                    s[x, lt] = sx
+                    ####################################################################
+                    # if norm(G-Gτ_old(model,s,lt))>1e-6
                     #     error("asd")
                     # end
-            #####################################################################
-
+                    #####################################################################
                 end
             end
 
-            if loop>WarmSweeps && abs(lt-model.Nt/2)<=model.WrapTime
-                G0=G[:,:]
-                if lt>model.Nt/2
-                    for i in lt:-1:div(model.Nt,2)+1
-                        D=[model.η[x] for x in s[:,i]]
-                        G0= model.eKinv*diagm(exp.(-1im*model.α.*D)) *G0*  diagm(exp.(1im*model.α.*D))*model.eK
-                    end
-                else
-                    for i in lt+1:div(model.Nt,2)
-                        D=[model.η[x] for x in s[:,i]]
-                        G0=diagm(exp.(1im*model.α.*D))*model.eK *G0* model.eKinv*diagm(exp.(-1im*model.α.*D))  
-                    end
-                end
-                #####################################################################
-                # if norm(G-Gτ(model,s,lt))>1e-6 
-                #     error("asd")
-                # end
-                #####################################################################
-                G0=model.HalfeK* G0 *model.HalfeKinv
+            # ---------------------------------------------------------------------------------------------------------
+            # if loop > WarmSweeps && abs(lt - model.Nt / 2) <= model.BatchSize
+            #     @views tmpNN .= G
+            #     if lt > model.Nt / 2
+            #         for i in lt:-1:(div(model.Nt, 2) + 1)
+            #             for iii in 1:Ns
+            #                 tmp_D[iii] = cis( model.α *model.η[s[iii, i]] ) 
+            #             end
+
+            #             tmp_G0= model.eKinv * Diagonal(conj(tmp_D))* tmp_G0 *Diagonal(tmp_D) * model.eK
             
-                ##------------------------------------------------------------------------
-                tmp=Magnetism(model,G0)
-                mA+=tmp[1]
-                mB+=tmp[2]
-                nn+=NN(model,G0)
-                Ek+=EK(model,G0)
-                tmp=CzzofSpin(model,G0)
-                R0+=tmp[1]
-                R1+=tmp[2]
-                C0+=tmp[3]
-                Cmax+=tmp[4]
-                counter+=1
-                ##------------------------------------------------------------------------
-            end
+            #         end
+            #     else
+            #         for i in (lt + 1):div(model.Nt, 2)
+            #             for iii in 1:Ns
+            #                 tmp_D[iii] = cis( model.α *model.η[s[iii, i]] )
+            #             end
+            #             tmp_G0= Diagonal(tmp_D) * model.eK * tmp_G0 * model.eKinv * Diagonal(conj(tmp_D))
+            #         end
+            #     end
+
+            #     @views tmp_G0 .= model.HalfeK * tmp_G0 * model.HalfeKinv
+
+            #     tmp = Magnetism(model, tmp_G0)
+            #     mA += tmp[1]
+            #     mB += tmp[2]
+            #     nn += NN(model, tmp_G0)
+            #     Ek += EK(model, tmp_G0)
+            #     tmp = CzzofSpin(model, tmp_G0)
+            #     R0 += tmp[1]
+            #     R1 += tmp[2]
+            #     C0 += tmp[3]
+            #     Cmax += tmp[4]
+            #     counter += 1
+            # end
+            # ---------------------------------------------------------------------------------------------------------
+
         end
+
+        tmpNN .= BM_F(model, s, NN-1)
+        mul!(tmpNn , tmpNN, view(BRs,:,:,NN-1))
+        view(BRs,:,:,NN) .=Matrix( qr!(tmpNn).Q)
+
+        tmpnn .= inv(view(BLs,:,:,NN) * view(BRs,:,:,NN))
+        mul!(tmpNn, view(BRs,:,:,NN), tmpnn)
+        mul!(tmpNN, tmpNn, view(BLs,:,:,NN))
+        @fastmath G .= II - tmpNN
 
         for lt in model.Nt-1:-1:1
-            if mod(lt,model.WrapTime)==1
-                G=Gτ_old(model,s,lt)
+            if any(model.nodes.== lt)
+                idx = findfirst(model.nodes .== lt)
+
+                @views tmpNN .= BM_F(model, s, idx)
+                mul!(tmpnN,view(BLs,:,:,idx+1),tmpNN)
+                tmpNn.=tmpnN'
+                view(BLs,:,:,idx).=Matrix(qr!(tmpNn).Q)'
+                # BL .= Matrix(qr(( BL * BM )').Q)'
+
+                tmpnn .= inv(view(BLs,:,:,idx) * view(BRs,:,:,idx))
+                mul!(tmpNn, view(BRs,:,:,idx), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLs,:,:,idx))
+                @fastmath G .= II - tmpNN
             else
-                D=[model.η[x] for x in s[:,lt+1]]
-                G=model.eKinv*diagm(exp.(-1im*model.α.*D)) *G* diagm(exp.(1im*model.α.*D))*model.eK 
-                
-                #####################################################################
-                # if norm(G-Gτ(model,s,lt))>1e-6
-                #     error("asd")
-                # end
-                #####################################################################
+                @inbounds @simd for iii in 1:Ns
+                    tmpN[iii] = cis( model.α *model.η[s[iii, lt+1]] ) 
+                end
+                mul!(tmpNN,G,Diagonal(tmpN))
+                conj!(tmpN)
+                mul!(G, Diagonal(tmpN) , tmpNN)
+                mul!(tmpNN,model.eKinv,G)
+                mul!(G,tmpNN,model.eK)
+                # G= model.eKinv * Diagonal(conj(tmp_D)) * G * Diagonal(tmp_D) * model.eK
             end
-
-            for x in 1:model.Ns
-                sp=Random.Sampler(rng,[i for i in elements if i != s[x,lt]])
-                sx=rand(rng,sp)
-                Δ=exp(1im*model.α*(model.η[sx]-model.η[s[x,lt]]))-1
-                r=1+Δ*(1-G[x,x])
-
-                if rand(rng)<model.γ[sx]/model.γ[s[x,lt]]*abs2(r)
-                    G=G-Δ/r.*(  G[:,x]    .*  transpose((I(model.Ns)-G)[x,:])   )
-                    s[x,lt]=sx
-            ####################################################################
-                    # if norm(G-Gτ(model,s,lt))>1e-6
-                    #     error("asd")
-                    # end
+            #####################################################################
+            # print("-")
+            # if norm(G-Gτ_old(model,s,lt))>1e-6 
+            #     error(lt," Wrap error:  ",norm(G-Gτ_old(model,s,lt)))
+            # end
             #####################################################################
 
+            @inbounds @simd for x in 1:model.Ns
+                sx = rand(rng,  samplers_dict[s[x, lt]])
+                @fastmath Δ = cis( model.α * (model.η[sx] - model.η[s[x, lt]])) - 1
+                @fastmath r = 1 + Δ * (1 - G[x, x])
+
+                if rand(rng) < model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
+                    @views tmp1N[1, :] .= -view(G,x, :)
+                    tmp1N[1, x] += 1
+                    mul!(tmpNN, view(G, :, x), tmp1N)
+                    # tmpNN .= view(G, :, x) * tmp1N
+                    @views G .= G - Δ / r .* tmpNN
+                    s[x, lt] = sx
+                    ####################################################################
+                    # if norm(G-Gτ_old(model,s,lt))>1e-6
+                    #     error("asd")
+                    # end
+                    #####################################################################
                 end
             end
 
-            if loop>WarmSweeps && abs(lt-model.Nt/2)<=model.WrapTime
-                G0=G[:,:]
-                if lt>model.Nt/2
-                    for i in lt:-1:div(model.Nt,2)+1
-                        D=[model.η[x] for x in s[:,i]]
-                        G0= model.eKinv*diagm(exp.(-1im*model.α.*D)) *G0*  diagm(exp.(1im*model.α.*D))*model.eK
-                    end
-                else
-                    for i in lt+1:div(model.Nt,2)
-                        D=[model.η[x] for x in s[:,i]]
-                        G0=diagm(exp.(1im*model.α.*D))*model.eK *G0* model.eKinv*diagm(exp.(-1im*model.α.*D))  
-                    end
-                end
-                #####################################################################
-                # if norm(G-Gτ(model,s,lt))>1e-6
-                #     error("asd")
-                # end
-                #####################################################################
-                G0=model.HalfeK* G0 *model.HalfeKinv
-            
-                ##------------------------------------------------------------------------
-                tmp=Magnetism(model,G0)
-                mA+=tmp[1]
-                mB+=tmp[2]
-                nn+=NN(model,G0)
-                Ek+=EK(model,G0)
-                tmp=CzzofSpin(model,G0)
-                R0+=tmp[1]
-                R1+=tmp[2]
-                C0+=tmp[3]
-                Cmax+=tmp[4]
-                counter+=1
-                ##------------------------------------------------------------------------
-            end
+            # ---------------------------------------------------------------------------------------------------------
+
+
+
+
+            # ---------------------------------------------------------------------------------------------------------
 
         end
-        if loop>WarmSweeps
+
+        if loop > WarmSweeps
             fid = open("$(path)Phy$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)BS$(model.BatchSize).csv", "a+")
-            writedlm(fid,[Ek model.U*nn nn mA mB R0 R1 C0 Cmax]/counter,',')
+            writedlm(fid, [Ek model.U * nn nn mA mB R0 R1 C0 Cmax] / counter, ',')
             close(fid)
-            mA=mB=nn=R0=R1=Ek=C0=Cmax=0
-            counter=0
+            mA = mB = nn = R0 = R1 = Ek = C0 = Cmax = 0
+            counter = 0
         end
     end
     return s
-end 
+end
+
 
 # function Poss(model,s)
 #     A=model.Pt[:,:]
