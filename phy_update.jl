@@ -4,6 +4,8 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     Ns=model.Ns
     ns=div(model.Ns, 2)
     NN=length(model.nodes)
+    tau = Vector{ComplexF64}(undef, ns)
+
     name = if model.Lattice=="SQUARE" "□" 
     elseif model.Lattice=="HoneyComb60" "HC" 
     elseif model.Lattice=="HoneyComb120" "HC120" 
@@ -34,7 +36,6 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     tmpnn = Matrix{ComplexF64}(undef, ns, ns)
     tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
     tmp1N = Matrix{ComplexF64}(undef ,1, Ns)
-    # tmpN1 = Matrix{ComplexF64}(undef ,Ns ,1)
 
     view(BRs,:,:,1) .= model.Pt
     view(BLs,:,:,NN) .= model.Pt'
@@ -42,8 +43,10 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
         tmpNN.=BM_F(model, s, idx)
         mul!(tmpnN,view(BLs,:,:,idx+1), tmpNN)
         tmpNn.=tmpnN'
-        view(BLs,:,:,idx) .= Matrix(qr!(tmpNn).Q)'
-        # BL .= Matrix(qr((tmpnN)').Q)'
+        LAPACK.geqrf!(tmpNn, tau)
+        LAPACK.orgqr!(tmpNn, tau, ns)
+        view(BLs,:,:,idx) .= tmpNn'
+        # view(BLs,:,:,idx) .= Matrix(qr!(tmpNn).Q)'
     end
     
     for loop in 1:(Sweeps + WarmSweeps)
@@ -52,8 +55,10 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
         tmpNN.=BM_F(model, s, 1)
         mul!(tmpnN,view(BLs,:,:,2), tmpNN)
         tmpNn.=tmpnN'
-        view(BLs,:,:,1) .= Matrix(qr!(tmpNn).Q)'
-
+        LAPACK.geqrf!(tmpNn, tau)
+        LAPACK.orgqr!(tmpNn, tau, ns)
+        view(BLs,:,:,1) .= tmpNn'
+        
         tmpnn .= inv(view(BLs,:,:,1) * view(BRs,:,:,1))
         mul!(tmpNn, view(BRs,:,:,1), tmpnn)
         mul!(tmpNN, tmpNn, view(BLs,:,:,1))
@@ -67,9 +72,11 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
             if any(model.nodes[2:end] .== (lt - 1))
                 idx = findfirst(model.nodes .== (lt - 1))
 
-                @views tmpNN .= BM_F(model, s, idx - 1)
+                tmpNN .= BM_F(model, s, idx - 1)
                 mul!(tmpNn, tmpNN, view(BRs,:,:,idx-1))
-                view(BRs,:,:,idx) .= Matrix(qr!(tmpNn).Q)
+                LAPACK.geqrf!(tmpNn, tau)
+                LAPACK.orgqr!(tmpNn, tau, ns)
+                view(BRs,:,:,idx) .= tmpNn
                 # BR .= Matrix(qr((BM * BR)).Q)
 
                 tmpnn .= inv(view(BLs,:,:,idx) * view(BRs,:,:,idx))
@@ -79,7 +86,7 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
             end
 
             @inbounds @simd for iii in 1:Ns
-                tmpN[iii] = cis( model.α *model.η[s[iii, lt]] ) 
+                @fastmath tmpN[iii] = cis( model.α *model.η[s[iii, lt]] ) 
             end
             mul!(tmpNN, model.eK, G)
             mul!(G,tmpNN,model.eKinv)
@@ -99,11 +106,10 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 @fastmath r = 1 + Δ * (1 - G[x, x])
 
                 if rand(rng) < model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    @views tmp1N[1, :] .= -view(G,x, :)
+                    tmp1N[1, :] .= -view(G,x, :)
                     tmp1N[1, x] += 1
                     mul!(tmpNN, view(G, :, x), tmp1N)
-                    # tmpNN .= view(G, :, x) * tmp1N
-                    @views G .= G - Δ / r .* tmpNN
+                    axpy!(-Δ/r, tmpNN, G)
                     s[x, lt] = sx
                     ####################################################################
                     # if norm(G-Gτ_old(model,s,lt))>1e-6
@@ -154,7 +160,9 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
 
         tmpNN .= BM_F(model, s, NN-1)
         mul!(tmpNn , tmpNN, view(BRs,:,:,NN-1))
-        view(BRs,:,:,NN) .=Matrix( qr!(tmpNn).Q)
+        LAPACK.geqrf!(tmpNn, tau)
+        LAPACK.orgqr!(tmpNn, tau, ns)
+        view(BRs,:,:,NN) .= tmpNn
 
         tmpnn .= inv(view(BLs,:,:,NN) * view(BRs,:,:,NN))
         mul!(tmpNn, view(BRs,:,:,NN), tmpnn)
@@ -168,7 +176,9 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 @views tmpNN .= BM_F(model, s, idx)
                 mul!(tmpnN,view(BLs,:,:,idx+1),tmpNN)
                 tmpNn.=tmpnN'
-                view(BLs,:,:,idx).=Matrix(qr!(tmpNn).Q)'
+                LAPACK.geqrf!(tmpNn, tau)
+                LAPACK.orgqr!(tmpNn, tau, ns)
+                view(BLs,:,:,idx).=tmpNn'
                 # BL .= Matrix(qr(( BL * BM )').Q)'
 
                 tmpnn .= inv(view(BLs,:,:,idx) * view(BRs,:,:,idx))
@@ -199,11 +209,10 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 @fastmath r = 1 + Δ * (1 - G[x, x])
 
                 if rand(rng) < model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    @views tmp1N[1, :] .= -view(G,x, :)
+                    tmp1N[1, :] .= -view(G,x, :)
                     tmp1N[1, x] += 1
                     mul!(tmpNN, view(G, :, x), tmp1N)
-                    # tmpNN .= view(G, :, x) * tmp1N
-                    @views G .= G - Δ / r .* tmpNN
+                    axpy!(-Δ/r, tmpNN, G)
                     s[x, lt] = sx
                     ####################################################################
                     # if norm(G-Gτ_old(model,s,lt))>1e-6

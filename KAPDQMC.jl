@@ -5,6 +5,7 @@ module KAPDQMC
     using Random
     using Statistics
     using MKL
+    using LinearAlgebra.LAPACK
 
     include("Geometry.jl")
     export K_Matrix,xy_i,i_xy,area_index

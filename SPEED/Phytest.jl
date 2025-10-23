@@ -14,17 +14,17 @@ Sweeps=1
 L=15
 # OLD 89.96 seconds
 # NEW 81.889 seconds
-# now 58.411 seconds
-# 50.744 s (294197 allocations: 157.09 GiB)
-# 51.852 s (237912 allocations: 105.04 GiB)
-# 44.309 s (640499 allocations: 105.05 GiB)
-# two with update 74.987 s (831433 allocations: 179.65 GiB)
 # two with no update 15.718 s (2335 allocations: 1.26 GiB)
 # two with no update 15.277 s (2041 allocations: 1.13 GiB)
 # 77.805 s (1237996 allocations: 192.05 GiB)
 #   simple *    160.329 s (1332784 allocations: 287.40 GiB)
 # 110.278 s (1237996 allocations: 192.05 GiB)
 # 73.387 s (1213511 allocations: 179.14 GiB)
+
+# 扫描不更新 9.385 s (433099 allocations: 550.44 MiB)
+# 扫描更新 44.226 s (640088 allocations: 104.76 GiB)
+# 11.916 s (519345 allocations: 672.02 MiB)
+# Final！！！ 20.368 s (1005979 allocations: 954.42 MiB)
 
 site=[L,L]
 

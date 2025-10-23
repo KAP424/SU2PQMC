@@ -1,36 +1,77 @@
 # ------------------------------------------------------------------------------------------------------------
-
 using BenchmarkTools, LinearAlgebra,Random
+using LinearAlgebra.BLAS
+push!(LOAD_PATH,"C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/")
+
+A=rand(1000,1000)
+B=rand(1000,1000)
+C=rand(1000,1000)
+
+@btime A.=B'
+# 605.400 μs (2 allocations: 32 bytes)
+
+function QRRR(A)
+    tau=Vector{Float64}(undef, size(A,2))
+    LAPACK.geqrf!(A, tau)
+    LAPACK.orgqr!(A, tau,  size(A,2))
+end
+function QRRR1(A)
+    Matrix(qr!(A).Q)
+end
+
+A=rand(5000,3000)
+@btime QRRR($A)
+@btime QRRR1($A)
+
+#   1.421 s (11 allocations: 1.49 MiB)
+# 1.920 ms (11 allocations: 915.93 KiB)
 
 
-# 预先为矩阵 A 分配内存
-A = Matrix{Float64}(undef, 5, 3) # 创建一个 5x3 的未初始化矩阵
-# 接下来可以初始化 A，例如用随机数填充
-rand!(A) # 使用随机数覆盖 A 的内容
+@btime A .= B-C
 
-# 执行原地 QR 分解，F 的类型由编译器自动推断
-F = qr!(A) # 现在 F 包含了分解结果，A 的内容已被覆盖为分解因子
+BLAS.geam!('N', 'N', 1.0, A, -1.0, B, C)
 
-# 查看 F 的具体类型
-Matrix(F.Q)'
-println("Type of F: ", typeof(F))
-
-B=Matrix(qr((tmp*tmpNN)').Q)'
-
-A*A'
-B*B'
+@btime geam!('N', 'N', 1.0, II, -1.0, tmpNN, G)
 
 
-tmpNn'*tmpNn
+A=rand(5,3)
+LAPACK.geqrf!(A,tau)
+LAPACK.orgqr!(A, tau, 3)
 
-C=rand(5,3)
+norm(A'*A - I(3))
 
-R=qr!(C)
+# 步骤2: 使用 orgqr! 从 geqrf! 的结果中生成完整的Q矩阵
+    # orgqr! 同样会原地修改传入的矩阵，并返回生成的Q矩阵
+    # 我们传入 A_copy 和 tau，函数会根据分解数据生成Q
+A = LinearAlgebra.LAPACK.orgqr!(A, tau)
+    
+tau
 
-R.R
+include("../GlobalVars.jl")
 
-Matrix(R.Q)'*Matrix(R.Q)
-C
+using .GlobalVars
+
+
+a
+
+function Initial()
+    global a=1
+    global b=[1,2,3]
+    global c=rand(3,3)
+end
+
+function main()
+    Initial()
+    
+    print(a,"\n",b,"\n",c,"\n")
+
+    a=a+1
+    print(a,"\n",b,"\n",c,"\n")
+end
+
+main()
+
+
 # function aa1()
 #     A=Matrix{Float64}(undef, 10000,10000)
 #     rand!(A)

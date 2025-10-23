@@ -65,9 +65,10 @@ function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Co
     return BMinv
 end
 
-function G4(nodes,idx,BLMs,BRMs,BMs,BMinvs)
+function G4!(Gt,G0,Gt0,G0t,nodes,idx,BLMs,BRMs,BMs,BMinvs)
     II=I(size(BMs,2))
     Θidx=div(length(nodes),2)+1
+    
     Gt=II-BRMs[idx,:,:] * inv( BLMs[idx,:,:] * BRMs[idx,:,:] ) * BLMs[idx,:,:]
     Gt0=II
     G0t=II

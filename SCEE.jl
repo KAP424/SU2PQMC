@@ -2,6 +2,8 @@
 
 
 function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record)
+    NN=length(model.nodes) 
+
     name = if model.Lattice=="SQUARE" "□" 
         elseif model.Lattice=="HoneyComb60" "HC" 
         elseif model.Lattice=="HoneyComb120" "HC120" 
@@ -31,47 +33,73 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     gmInv_B=Matrix{ComplexF64}(undef ,length(indexB),length(indexB))
     detg_A=detg_B=0 
 
+    # 预分配临时数组
+    tmpN = Vector{ComplexF64}(undef, Ns)
+    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
+    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
+    tmpnn = Matrix{ComplexF64}(undef, ns, ns)
+    tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
+    tmp1N = Matrix{ComplexF64}(undef ,1, Ns)
+
     rng=MersenneTwister(Threads.threadid()+round(Int,time()*1000))
     elements=(1, 2, 3, 4)
+    samplers_dict = Dict{UInt8, Random.Sampler}()
+    for excluded in elements
+        allowed = [i for i in elements if i != excluded]
+        samplers_dict[excluded] = Random.Sampler(rng, allowed)
+    end
 
     tmpO=0
     counter=0
-    O=zeros(Sweeps+1)
+    O=zeros(Float64,Sweeps+1)
     O[1]=λ
 
     II=I(model.Ns)
     IA=I(length(indexA))
     IB=I(length(indexB))
 
-    BMs1=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
-    BMs2=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
-    BMsinv1=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
-    BMsinv2=Array{ComplexF64}(undef,model.Ns,model.Ns,length(model.nodes)-1)  # Number_of_BM*Ns*Ns
+    BMs1=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
+    BMs2=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
+    BMsinv1=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
+    BMsinv2=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
 
-    for idx in axes(BMs1,1)
-        @inbounds BMs1[:,:,idx]=BM_F(model,ss[1],idx)
-        @inbounds BMs2[:,:,idx]=BM_F(model,ss[2],idx)
-        @inbounds BMsinv1[:,:,idx]=BMinv_F(model,ss[1],idx)
-        @inbounds BMsinv2[:,:,idx]=BMinv_F(model,ss[2],idx)
+    for idx in axes(BMs1,3)
+        @inbounds view(BMs1,:, : , idx) .= BM_F(model,ss[1],idx)
+        @inbounds view(BMs2,:,:,idx) .= BM_F(model,ss[2],idx)
+        @inbounds view(BMsinv1,:,:,idx) .= BMinv_F(model,ss[1],idx)
+        @inbounds view(BMsinv2,:,:,idx) .= BMinv_F(model,ss[2],idx)
     end
 
-    BLMs1=zeros(ComplexF64,length(model.nodes),div(model.Ns,2),model.Ns)
-    BRMs1=zeros(ComplexF64,length(model.nodes),model.Ns,div(model.Ns,2))
-    BLMs1[end,:,:]=model.Pt'[:,:]
-    BRMs1[1,:,:]=model.Pt[:,:]
-    BLMs2=zeros(ComplexF64,length(model.nodes),div(model.Ns,2),model.Ns)
-    BRMs2=zeros(ComplexF64,length(model.nodes),model.Ns,div(model.Ns,2))
-    BLMs2[end,:,:]=model.Pt'[:,:]
-    BRMs2[1,:,:]=model.Pt[:,:]
+    BLMs1=Array{ComplexF64}(div(model.Ns,2),model.Ns,NN)
+    BRMs1=Array{ComplexF64}(model.Ns,div(model.Ns,2),NN)
+    view(BLMs1,:,:,NN) .= model.Pt'
+    view(BRMs1,:,:,1) .= model.Pt
+    
+    BLMs2=Array{ComplexF64}(div(model.Ns,2),model.Ns,NN)
+    BRMs2=Array{ComplexF64}(model.Ns,div(model.Ns,2),NN)
+    view(BLMs2,:,:,NN) .= model.Pt'
+    view(BRMs2,:,:,1) .= model.Pt
 
-    for i in axes(BMs1,1)
-        BLMs1[end-i,:,:]=Matrix(qr( (BLMs1[end-i+1,:,:]*BMs1[end-i+1,:,:])' ).Q)'
-        BRMs1[i+1,:,:]=Matrix(qr( BMs1[i,:,:]*BRMs1[i,:,:] ).Q)
-        BLMs2[end-i,:,:]=Matrix(qr( (BLMs2[end-i+1,:,:]*BMs2[end-i+1,:,:])' ).Q)'
-        BRMs2[i+1,:,:]=Matrix(qr( BMs2[i,:,:]*BRMs2[i,:,:] ).Q)
+    for i in 1:NN-1
+        mul!(tmpnN,view(BLMs1,:,:,NN-i+1),view(BMs1,:,:,NN-i))
+        tmpNn.=tmpnN'
+        view(BLMs1,:,:,NN-i) .= Matrix(qr!(tmpNn).Q)'
+
+        mul!(tmpNn, tmpNN, view(BRMs1,:,:,i))
+        view(BRMs1,:,:,i+1) .= Matrix(qr!(tmpNn).Q)
+        # ---------------------------------------------------------------
+        mul!(tmpnN,view(BLMs2,:,:,NN-i+1),view(BMs2,:,:,NN-i))
+        tmpNn.=tmpnN'
+        view(BLMs2,:,:,NN-i) .= Matrix(qr!(tmpNn).Q)'
+
+        mul!(tmpNn, tmpNN, view(BRMs2,:,:,i))
+        view(BRMs2,:,:,i+1) .= Matrix(qr!(tmpNn).Q)
+
+        # BLMs2[end-i,:,:]=Matrix(qr( (BLMs2[end-i+1,:,:]*BMs2[end-i+1,:,:])' ).Q)'
+        # BRMs2[i+1,:,:]=Matrix(qr( BMs2[i,:,:]*BRMs2[i,:,:] ).Q)
     end
 
-    Θidx=div(length(model.nodes),2)+1
+    Θidx=div(NN,2)+1
 
     for loop in 1:Sweeps
         println("\n ====== Sweep $loop / $Sweeps ======")
@@ -79,24 +107,28 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
             if  any(model.nodes.==(lt-1)) 
                 println("\n Wrap Time: $lt")
                 idx= (lt==1) ? 2 : findfirst(model.nodes .== (lt-1))
-                BMs1[idx-1,:,:]=BM_F(model,ss[1],idx-1)
-                BMsinv1[idx-1,:,:]=BMinv_F(model,ss[1],idx-1)
-                BMs2[idx-1,:,:]=BM_F(model,ss[2],idx-1)
-                BMsinv2[idx-1,:,:]=BMinv_F(model,ss[2],idx-1)
+                view(BMs1,:,:,idx-1) .= BM_F(model,ss[1],idx-1)
+                view(BMsinv1,:,:,idx-1) .= BMinv_F(model,ss[1],idx-1)
+                view(BMs2,:,:,idx-1) .= BM_F(model,ss[2],idx-1)
+                view(BMsinv2,:,:,idx-1) .= BMinv_F(model,ss[2],idx-1)
                 for i in idx:max(Θidx,idx)
                     # println("update BR i=",i)
-                    BRMs1[i,:,:]=BMs1[i-1,:,:]*BRMs1[i-1,:,:]
-                    BRMs2[i,:,:]=BMs2[i-1,:,:]*BRMs2[i-1,:,:]
-                    BRMs1[i,:,:]=Matrix(qr(BRMs1[i,:,:]).Q)
-                    BRMs2[i,:,:]=Matrix(qr(BRMs2[i,:,:]).Q)
+                    mul!(tmpNn, view(BMs1,:,:,i-1), view(BRMs1,:,:,i-1))
+                    view(BRMs1,:,:,i) .= Matrix(qr!(tmpNn).Q)
+                    # ---------------------------------------------------------------
+                    mul!(tmpNn, view(BMs2,:,:,i-1), view(BRMs2,:,:,i-1))
+                    view(BRMs2,:,:,i) .= Matrix(qr!(tmpNn).Q)
                 end
 
                 for i in idx-1:-1:min(Θidx,idx)-1
                     # println("update BL i=",i)
-                    BLMs1[i,:,:]=BLMs1[i+1,:,:]*BMs1[i,:,:]
-                    BLMs2[i,:,:]=BLMs2[i+1,:,:]*BMs2[i,:,:]
-                    BLMs1[i,:,:]=Matrix(qr(BLMs1[i,:,:]').Q)'
-                    BLMs2[i,:,:]=Matrix(qr(BLMs2[i,:,:]').Q)'
+                    mul!(tmpnN,view(BLMs1,:,:,i+1),view(BMs1,:,:,i))
+                    tmpNn.=tmpnN'
+                    view(BLMs1,:,:,i) .= Matrix(qr!(tmpNn).Q)'
+                    # ---------------------------------------------------------------
+                    mul!(tmpnN,view(BLMs2,:,:,i+1),view(BMs2,:,:,i))
+                    tmpNn.=tmpnN'
+                    view(BLMs2,:,:,i) .= Matrix(qr!(tmpNn).Q)'
                 end
 
                 idx=findfirst(model.nodes .== (lt-1))
@@ -111,8 +143,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
 
                 #####################################################################
                 # println("--------Test BMs and BMinvs--------")
-                # BMs=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
-                # BMinvs=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
+                # BMs=zeros(ComplexF64,NN-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
+                # BMinvs=zeros(ComplexF64,NN-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
 
                 # for idxx in axes(BMs,1)
                 #     BMs[idxx,:,:]=BM_F(model,ss[1],idxx)
@@ -120,8 +152,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 #     println(norm(BMs[idxx,:,:]-BMs1[idxx,:,:]),",",norm(BMinvs[idxx,:,:]-BMsinv1[idxx,:,:]))
                 # end
                 # println("--------Test BLMs and BRMs --------")
-                # BLMs=zeros(ComplexF64,length(model.nodes),div(model.Ns,2),model.Ns)
-                # BRMs=zeros(ComplexF64,length(model.nodes),model.Ns,div(model.Ns,2))
+                # BLMs=zeros(ComplexF64,NN,div(model.Ns,2),model.Ns)
+                # BRMs=zeros(ComplexF64,NN,model.Ns,div(model.Ns,2))
                 # BLMs[end,:,:]=model.Pt'[:,:]
                 # BRMs[1,:,:]=model.Pt[:,:]
                 # for i in axes(BMs,1)
@@ -268,8 +300,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
             ##------------------------------------------------------------------------
         end
 
-        Gt1,G01,Gt01,G0t1=G4(model.nodes,length(model.nodes),BLMs1,BRMs1,BMs1,BMsinv1)
-        Gt2,G02,Gt02,G0t2=G4(model.nodes,length(model.nodes),BLMs2,BRMs2,BMs2,BMsinv2)
+        Gt1,G01,Gt01,G0t1=G4(model.nodes,NN,BLMs1,BRMs1,BMs1,BMsinv1)
+        Gt2,G02,Gt02,G0t2=G4(model.nodes,NN,BLMs2,BRMs2,BMs2,BMsinv2)
         GM_A=GroverMatrix(G01[indexA[:],indexA[:]],G02[indexA[:],indexA[:]])
         gmInv_A=inv(GM_A)
         GM_B=GroverMatrix(G01[indexB[:],indexB[:]],G02[indexB[:],indexB[:]])
@@ -281,7 +313,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
 
         for lt in model.Nt:-1:1
             if  any(model.nodes.==lt) 
-                idx= (lt==model.nodes[end]) ? length(model.nodes) : findfirst(model.nodes .== lt)+1
+                idx= (lt==model.nodes[end]) ? NN : findfirst(model.nodes .== lt)+1
                 println("\n Wrap Time: $lt")
                 BMs1[idx-1,:,:]=BM_F(model,ss[1],idx-1)
                 BMs2[idx-1,:,:]=BM_F(model,ss[2],idx-1)
@@ -314,8 +346,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
 
                 #####################################################################
                 # println("--------Test BMs and BMinvs--------")
-                # BMs=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
-                # BMinvs=zeros(ComplexF64,length(model.nodes)-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
+                # BMs=zeros(ComplexF64,NN-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
+                # BMinvs=zeros(ComplexF64,NN-1,model.Ns,model.Ns)  # Number_of_BM*Ns*Ns
 
                 # for idxx in axes(BMs,1)
                 #     BMs[idxx,:,:]=BM_F(model,ss[1],idxx)
@@ -323,8 +355,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 #     println(norm(BMs[idxx,:,:]-BMs1[idxx,:,:]),",",norm(BMinvs[idxx,:,:]-BMsinv1[idxx,:,:]))
                 # end
                 # println("--------Test BLMs and BRMs --------")
-                # BLMs=zeros(ComplexF64,length(model.nodes),div(model.Ns,2),model.Ns)
-                # BRMs=zeros(ComplexF64,length(model.nodes),model.Ns,div(model.Ns,2))
+                # BLMs=zeros(ComplexF64,NN,div(model.Ns,2),model.Ns)
+                # BRMs=zeros(ComplexF64,NN,model.Ns,div(model.Ns,2))
                 # BLMs[end,:,:]=model.Pt'[:,:]
                 # BRMs[1,:,:]=model.Pt[:,:]
                 # for i in axes(BMs,1)
