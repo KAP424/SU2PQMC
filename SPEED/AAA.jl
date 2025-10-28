@@ -1,75 +1,98 @@
 # ------------------------------------------------------------------------------------------------------------
 using BenchmarkTools, LinearAlgebra,Random
-using LinearAlgebra.BLAS
+using LinearAlgebra.BLAS,LinearAlgebra.LAPACK
 push!(LOAD_PATH,"C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/")
 
-A=rand(1000,1000)
-B=rand(1000,1000)
-C=rand(1000,1000)
-
-@btime A.=B'
-# 605.400 μs (2 allocations: 32 bytes)
-
-function QRRR(A)
-    tau=Vector{Float64}(undef, size(A,2))
-    LAPACK.geqrf!(A, tau)
-    LAPACK.orgqr!(A, tau,  size(A,2))
-end
-function QRRR1(A)
-    Matrix(qr!(A).Q)
-end
-
-A=rand(5000,3000)
-@btime QRRR($A)
-@btime QRRR1($A)
-
-#   1.421 s (11 allocations: 1.49 MiB)
-# 1.920 ms (11 allocations: 915.93 KiB)
+b_A= Matrix{ComplexF64}(undef ,1,5)
+A=rand(5,5)
+b_A .= view(A,1:1,:)
 
 
-@btime A .= B-C
+a=rand(5,1)
+c=rand(1,1)
+@allocated mul!(c,b_A,a)
+c=0
+@allocated c=dot(a,b_A)
+@allocated c=BLAS.dotu(view(a,:,1),view(b_A,1,:))
 
-BLAS.geam!('N', 'N', 1.0, A, -1.0, B, C)
+BLAS.dotu(5,view(a,:,1),1,view(b_A,1,:),1)
 
-@btime geam!('N', 'N', 1.0, II, -1.0, tmpNN, G)
+BLAS.dotu(10, fill(1.0im, 10), 1, fill(1.0+im, 20), 2)
 
+fill(1.0im, 10)
 
-A=rand(5,3)
-LAPACK.geqrf!(A,tau)
-LAPACK.orgqr!(A, tau, 3)
-
-norm(A'*A - I(3))
-
-# 步骤2: 使用 orgqr! 从 geqrf! 的结果中生成完整的Q矩阵
-    # orgqr! 同样会原地修改传入的矩阵，并返回生成的Q矩阵
-    # 我们传入 A_copy 和 tau，函数会根据分解数据生成Q
-A = LinearAlgebra.LAPACK.orgqr!(A, tau)
-    
-tau
-
-include("../GlobalVars.jl")
-
-using .GlobalVars
-
-
-a
-
-function Initial()
-    global a=1
-    global b=[1,2,3]
-    global c=rand(3,3)
+function test()
+    println(norm(A))
 end
 
 function main()
-    Initial()
+    global A=rand(5000,3000)
     
-    print(a,"\n",b,"\n",c,"\n")
-
-    a=a+1
-    print(a,"\n",b,"\n",c,"\n")
+    test()
 end
 
+a=rand(5,1)+1im*rand(5,1)
+b=rand(1,5)+1im*rand(1,5)
+
+(b*a)
+dot((b),conj!(a))
+
+a_A .* b_A
+
+G=rand(5,5)
+
+a=rand(5,1)
+b=rand(1,5)
+
+A*view(a,:,1) .* b
+A*view(a,:,1) .* view(b,1:1,:)
+
+
+b=Matrix(transpose(G[1,:])*G)
+
+@allocated b.=view(G,1:1,:)
+@allocated b.=transpose(view(G,1,:))
+@allocated a.=view(G,:,1)
+
 main()
+
+A=rand(5000,3000)
+B=rand(3000,5000)
+
+@allocated view(A,:,:).=B'
+
+# function QRRR(A)
+#     tau=Vector{Float64}(undef, size(A,2))
+#     LAPACK.geqrf!(A, tau)
+#     LAPACK.orgqr!(A, tau,  size(A,2))
+# end
+# function QRRR1(A)
+#     Matrix(qr!(A).Q)
+# end
+
+# A=rand(5000,3000)
+# @btime QRRR($A)
+# @btime QRRR1($A)
+
+
+# using .GlobalVars
+
+# function Initial()
+#     global a=1
+#     global b=[1,2,3]
+#     global c=rand(3,3)
+# end
+
+# function main()
+#     Initial()
+    
+#     print(a,"\n",b,"\n",c,"\n")
+
+#     a=a+1
+#     print(a,"\n",b,"\n",c,"\n")
+# end
+
+# main()
 
 
 # function aa1()

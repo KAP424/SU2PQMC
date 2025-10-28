@@ -1,11 +1,5 @@
 # using SU(2) ±1,±2 HS transformation
 
-module HubbardModel
-    
-
-
-end
-
 
 struct _Hubbard_Para
     Lattice::String

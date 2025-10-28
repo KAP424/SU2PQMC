@@ -5,6 +5,8 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     ns=div(model.Ns, 2)
     NN=length(model.nodes)
     tau = Vector{ComplexF64}(undef, ns)
+    ipiv = Vector{LAPACK.BlasInt}(undef, ns)
+
 
     name = if model.Lattice=="SQUARE" "□" 
     elseif model.Lattice=="HoneyComb60" "HC" 
@@ -30,8 +32,8 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     BRs = Array{ComplexF64}(undef, model.Ns, ns,NN)
 
     # 预分配临时数组
-    tmpN = Vector{ComplexF64}(undef, Ns)
-    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
+    global tmpN = Vector{ComplexF64}(undef, Ns)
+    global tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
     tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
     tmpnn = Matrix{ComplexF64}(undef, ns, ns)
     tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
@@ -59,30 +61,33 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
         LAPACK.orgqr!(tmpNn, tau, ns)
         view(BLs,:,:,1) .= tmpNn'
         
-        tmpnn .= inv(view(BLs,:,:,1) * view(BRs,:,:,1))
+        mul!(tmpnn, view(BLs,:,:,1), view(BRs,:,:,1))
+        LAPACK.getrf!(tmpnn,ipiv)
+        LAPACK.getri!(tmpnn, ipiv)
         mul!(tmpNn, view(BRs,:,:,1), tmpnn)
         mul!(tmpNN, tmpNn, view(BLs,:,:,1))
-        @fastmath G .= II - tmpNN
+        @fastmath G .= II .- tmpNN
         #####################################################################
         # if norm(G-Gτ_old(model,s,0))>1e-6 
         #     error("00000"," Wrap error:  ",norm(G-Gτ_old(model,s,0)))
         # end
         #####################################################################
+        idx=1
         for lt in 1:model.Nt
             if any(model.nodes[2:end] .== (lt - 1))
-                idx = findfirst(model.nodes .== (lt - 1))
-
+                idx+=1
                 tmpNN .= BM_F(model, s, idx - 1)
                 mul!(tmpNn, tmpNN, view(BRs,:,:,idx-1))
                 LAPACK.geqrf!(tmpNn, tau)
                 LAPACK.orgqr!(tmpNn, tau, ns)
                 view(BRs,:,:,idx) .= tmpNn
                 # BR .= Matrix(qr((BM * BR)).Q)
-
-                tmpnn .= inv(view(BLs,:,:,idx) * view(BRs,:,:,idx))
+                mul!(tmpnn, view(BLs,:,:,idx), view(BRs,:,:,idx))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
                 mul!(tmpNn, view(BRs,:,:,idx), tmpnn)
                 mul!(tmpNN, tmpNn, view(BLs,:,:,idx))
-                @fastmath G .= II - tmpNN
+                @fastmath G .= II .- tmpNN
             end
 
             @inbounds @simd for iii in 1:Ns
@@ -164,15 +169,15 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
         LAPACK.orgqr!(tmpNn, tau, ns)
         view(BRs,:,:,NN) .= tmpNn
 
-        tmpnn .= inv(view(BLs,:,:,NN) * view(BRs,:,:,NN))
+        mul!(tmpnn, view(BLs,:,:,NN), view(BRs,:,:,NN))
+        LAPACK.getrf!(tmpnn,ipiv)
+        LAPACK.getri!(tmpnn, ipiv)
         mul!(tmpNn, view(BRs,:,:,NN), tmpnn)
         mul!(tmpNN, tmpNn, view(BLs,:,:,NN))
-        @fastmath G .= II - tmpNN
+        @fastmath G .= II .- tmpNN
 
         for lt in model.Nt-1:-1:1
             if any(model.nodes.== lt)
-                idx = findfirst(model.nodes .== lt)
-
                 @views tmpNN .= BM_F(model, s, idx)
                 mul!(tmpnN,view(BLs,:,:,idx+1),tmpNN)
                 tmpNn.=tmpnN'
@@ -181,10 +186,14 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 view(BLs,:,:,idx).=tmpNn'
                 # BL .= Matrix(qr(( BL * BM )').Q)'
 
-                tmpnn .= inv(view(BLs,:,:,idx) * view(BRs,:,:,idx))
+                mul!(tmpnn, view(BLs,:,:,idx), view(BRs,:,:,idx))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
                 mul!(tmpNn, view(BRs,:,:,idx), tmpnn)
                 mul!(tmpNN, tmpNn, view(BLs,:,:,idx))
-                @fastmath G .= II - tmpNN
+                @fastmath G .= II .- tmpNN
+
+                idx-=1
             else
                 @inbounds @simd for iii in 1:Ns
                     tmpN[iii] = cis( model.α *model.η[s[iii, lt+1]] ) 

@@ -12,8 +12,8 @@ function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Compl
 
     @assert 0< idx <=length(model.nodes)
 
-    D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
-    tmp=Matrix{ComplexF64}(undef, Ns, Ns)
+    # D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
+    # tmp=Matrix{ComplexF64}(undef, Ns, Ns)
     BM=zeros(ComplexF64,Ns,Ns)
     @inbounds for i in diagind(BM)
         BM[i] = one(eltype(BM))
@@ -21,10 +21,10 @@ function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Compl
     for lt in nodes[idx] + 1:nodes[idx + 1]
         @inbounds begin
             for i in 1:Ns
-                D[i] =  cis( α *η[s[i, lt]])
+                tmpN[i] =  cis( α *η[s[i, lt]])
             end
-            mul!(tmp,eK, BM)
-            mul!(BM,diagm(D), tmp)
+            mul!(tmpNN,eK, BM)
+            mul!(BM,Diagonal(tmpN), tmpNN)
             # BM = Diagonal(D) * eK * BM
         end
     end
@@ -44,8 +44,8 @@ function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Co
 
     @assert 0< idx <=length(model.nodes)
     
-    D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
-    tmp=Matrix{ComplexF64}(undef, Ns, Ns)
+    # D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
+    # tmp=Matrix{ComplexF64}(undef, Ns, Ns)
     BMinv=zeros(ComplexF64,Ns,Ns)
     @inbounds for i in diagind(BMinv)
         BMinv[i] = one(eltype(BMinv))
@@ -54,10 +54,10 @@ function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Co
     for lt in nodes[idx] + 1:nodes[idx + 1]
         @inbounds begin
             for i in 1:Ns
-                D[i] =  cis( -α *η[s[i, lt]])
+                tmpN[i] =  cis( -α *η[s[i, lt]])
             end
-            mul!(tmp,BMinv, eKinv)
-            mul!(BMinv,tmp,diagm(D))
+            mul!(tmpNN,BMinv, eKinv)
+            mul!(BMinv,tmpNN,Diagonal(tmpN))
             # BMinv = BMinv * eKinv * Diagonal(D) 
         end
     end
@@ -65,41 +65,99 @@ function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Co
     return BMinv
 end
 
-function G4!(Gt,G0,Gt0,G0t,nodes,idx,BLMs,BRMs,BMs,BMinvs)
-    II=I(size(BMs,2))
+function G4(nodes,idx,BLMs,BRMs,BMs,BMinvs)
+    Ns=size(BMs,1)
+    Gt=Matrix{ComplexF64}(undef, Ns, Ns)
+    Gt0=Matrix{ComplexF64}(undef, Ns, Ns)
+    G0=Matrix{ComplexF64}(undef, Ns, Ns)
+    G0t=Matrix{ComplexF64}(undef, Ns, Ns)
+
     Θidx=div(length(nodes),2)+1
+
+    mul!(tmpnn,view(BLMs,:,:,idx), view(BRMs,:,:,idx))
+    LAPACK.getrf!(tmpnn,ipiv)
+    LAPACK.getri!(tmpnn, ipiv)
+    mul!(tmpNn,view(BRMs,:,:,idx), tmpnn)
+    mul!(tmpNN, tmpNn, view(BLMs,:,:,idx))
+    Gt .= II .- tmpNN
+    # Gt=II-BRMs[:,:,idx] * inv( BLMs[:,:,idx] * BRMs[:,:,idx] ) * BLMs[:,:,idx]
     
-    Gt=II-BRMs[idx,:,:] * inv( BLMs[idx,:,:] * BRMs[idx,:,:] ) * BLMs[idx,:,:]
-    Gt0=II
-    G0t=II
+    mul!(tmpnn,view(BLMs,:,:,Θidx), view(BRMs,:,:,Θidx))
+    LAPACK.getrf!(tmpnn,ipiv)
+    LAPACK.getri!(tmpnn, ipiv)
+    mul!(tmpNn,view(BRMs,:,:,Θidx), tmpnn)
+    mul!(tmpNN, tmpNn, view(BLMs,:,:,Θidx))
+    G0 .= II .- tmpNN
+    # G0=II-BRMs[:,:,Θidx] * inv( BLMs[:,:,Θidx] * BRMs[:,:,Θidx] ) * BLMs[:,:,Θidx]
+    
+    Gt0 .= II
+    G0t .= II
     if idx<Θidx
-        G0=II-BRMs[Θidx,:,:] * inv( BLMs[Θidx,:,:] * BRMs[Θidx,:,:] ) * BLMs[Θidx,:,:]
         for j in idx:Θidx-1
             if j==idx
-                tmp=II-Gt
+                tmpNN .= II .- Gt
             else
-                tmp=BRMs[j,:,:] *inv(BLMs[j,:,:] * BRMs[j,:,:])*BLMs[j,:,:]
+                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
+                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+                # tmpNN=BRMs[:,:,j] *inv(BLMs[:,:,j] * BRMs[:,:,j])*BLMs[:,:,j]
             end
-            Gt0= Gt0* tmp*BMinvs[j,:,:]
-            G0t= BMs[j,:,:]*(II-tmp) * G0t
+            mul!(tmpNN2,Gt0, tmpNN)
+            mul!(Gt0, tmpNN2, view(BMinvs,:,:,j))
+            # Gt0= Gt0* tmpNN*BMinvs[:,:,j]
+            tmpNN2 .= II .- tmpNN
+            mul!(tmpNN,tmpNN2, G0t)
+            mul!(G0t, view(BMs,:,:,j), tmpNN)
+            # G0t= BMs[:,:,j]*(II-tmpNN) * G0t
         end
-        Gt0=-Gt0
+        lmul!(-1.0, Gt0)
     elseif idx>Θidx
-        G0=II-BRMs[Θidx,:,:] * inv( BLMs[Θidx,:,:] * BRMs[Θidx,:,:] ) * BLMs[Θidx,:,:]
         for j in Θidx:idx-1
             if j==Θidx
-                tmp=II-G0
+                tmpNN .=II .- G0
             else
-                tmp=BRMs[j,:,:]*inv(BLMs[j,:,:] * BRMs[j,:,:])* BLMs[j,:,:]
+                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
+                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+                # tmp=BRMs[:,:,j]*inv(BLMs[:,:,j] * BRMs[:,:,j])* BLMs[:,:,j]
             end
-            G0t= G0t* tmp*BMinvs[j,:,:]
-            Gt0= BMs[j,:,:]*(II-tmp) * Gt0 
+            mul!(tmpNN2, G0t, tmpNN)
+            mul!(G0t, tmpNN2,view(BMinvs,:,:,j))
+            tmpNN2 .= II .- tmpNN
+            mul!(tmpNN, tmpNN2, Gt0)
+            mul!(Gt0, view(BMs,:,:,j), tmpNN)
+            # G0t= G0t* tmp*BMinvs[j,:,:]
+            # Gt0= BMs[j,:,:]*(II-tmp) * Gt0 
         end
-        G0t=-G0t
+
+
+        # for j in idx:-1:Θidx+1
+            # if j==idx
+            #     tmpNN .= II .- Gt
+            # else
+            #     mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+            #     LAPACK.getrf!(tmpnn,ipiv)
+            #     LAPACK.getri!(tmpnn, ipiv)
+            #     mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+            #     mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+            #     # tmp=BRMs[:,:,j]*inv(BLMs[:,:,j] * BRMs[:,:,j])* BLMs[:,:,j]
+            # end
+            # mul!(tmpNN2, tmpNN,G0t)
+            # mul!(G0t, view(BMinvs,:,:,j-1),tmpNN2)
+            # tmpNN2 .= II .- tmpNN
+            # mul!(tmpNN,Gt0, view(BMs,:,:,j-1))
+            # mul!(Gt0, tmpNN,tmpNN2)
+            # # G0t= G0t* tmp*BMinvs[:,:,j]
+            # # Gt0= BMs[:,:,j]*(II-tmp) * Gt0 
+        lmul!(-1.0, G0t)
     else
-        G0=Gt[:,:]
-        Gt0=-(II-Gt)
-        G0t=Gt[:,:]
+        G0.=Gt
+        Gt0.=Gt.-II
+        G0t.=Gt
     end
     return Gt,G0,Gt0,G0t
 end
@@ -268,10 +326,24 @@ function G4_old(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
 
 end
 
-
-function GroverMatrix(G1,G2)
+function GroverMatrix_old(G1,G2)
     II=I(size(G1)[1])
     return G1*G2+(II-G1)*(II-G2)
+end
+
+function GroverMatrix(G1,G2)
+    n = size(G1, 1)
+    GM=Matrix{ComplexF64}(undef,n,n)
+    
+    mul!(GM,G1,G2)
+    lmul!(2.0, GM)
+    axpy!(-1.0, G1, GM)
+    axpy!(-1.0, G2, GM)
+    for i in diagind(GM)
+        GM[i] += 1.0
+    end
+    return GM   
+    # 2*G1*G2 - G1 - G2 + II
 end
 
 
