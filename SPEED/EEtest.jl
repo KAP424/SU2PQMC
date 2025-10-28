@@ -21,7 +21,6 @@ function main()
 
     # # Half
     indexA=area_index(Lattice,site,([1,1],[div(L,3),L]))
-    # println(indexA)
     # # HalfHalf
     indexB=area_index(Lattice,site,([1,1],[div(L,3),div(2*L,3)]))
     # println(indexB)
@@ -30,34 +29,24 @@ function main()
     Nλ=2
 
     println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
+    # ctrl_SCEEicr(path,model,indexA,indexB,Sweeps,λ,Nλ,ss,true)
 end
 
 main()
 
+
+typeof(2)
+
 #------SCEEicr_PQMC-------#
+# U=3.8;     Δt=0.1;     Θ=3.0;   L=15;    Sweeps=1;
 # OLD 1025.714 seconds
 # NEW 886.15 seconds
 # !!! 115.434 s (6079507 allocations: 1.37 GiB)
+# 128.842 s (6038300 allocations: 835.83 MiB)
+# Final 95.108 s (5242872 allocations: 662.00 MiB)
 
-
-
-
-
-# s=Initial_s(model,rng)
-# G1=Gτ_old(model,s,1)
-# G2=Gτ_old(model,s,2)
-
-# gmInv_A=GroverMatrix(view(G1,indexA,indexA),view(G2,indexA,indexA))
-# GM=gmInv_A[:,:]
-# ipivA = Vector{LAPACK.BlasInt}(undef, length(indexA))
-# LAPACK.getrf!(gmInv_A,ipivA)
-# LAPACK.getri!(gmInv_A, ipivA)
-
-# println(norm(GM*gmInv_A-I(length(indexA))))
-
-
-# ------------------------------------------------------------------------
-# TEST for SCEE
-
-
-
+# L=9
+# no update 2.281 s (142399 allocations: 126.97 MiB)
+# update 8.909 s (2188951 allocations: 240.55 MiB)
+# update 8.779 s (2213106 allocations: 169.78 MiB)
+# 8.625 s (2176897 allocations: 167.88 MiB)

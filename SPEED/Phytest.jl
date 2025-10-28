@@ -36,8 +36,10 @@ U=3.8;     Δt=0.1;     Θ=3.0;   L=15;       Sweeps=1;
 U=3.8;     Δt=0.1;     Θ=3.0;   L=15;    Sweeps=1;
 # OLD 1025.714 seconds
 # NEW 886.15 seconds
+# !!! 115.434 s (6079507 allocations: 1.37 GiB)
+# 128.842 s (6038300 allocations: 835.83 MiB)
 
-# Final 115.434 s (6079507 allocations: 1.37 GiB)
+# Final 95.108 s (5242872 allocations: 662.00 MiB)
 
 site=[L,L]
 

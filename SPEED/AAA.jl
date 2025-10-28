@@ -3,63 +3,8 @@ using BenchmarkTools, LinearAlgebra,Random
 using LinearAlgebra.BLAS,LinearAlgebra.LAPACK
 push!(LOAD_PATH,"C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/")
 
-b_A= Matrix{ComplexF64}(undef ,1,5)
-A=rand(5,5)
-b_A .= view(A,1:1,:)
 
 
-a=rand(5,1)
-c=rand(1,1)
-@allocated mul!(c,b_A,a)
-c=0
-@allocated c=dot(a,b_A)
-@allocated c=BLAS.dotu(view(a,:,1),view(b_A,1,:))
-
-BLAS.dotu(5,view(a,:,1),1,view(b_A,1,:),1)
-
-BLAS.dotu(10, fill(1.0im, 10), 1, fill(1.0+im, 20), 2)
-
-fill(1.0im, 10)
-
-function test()
-    println(norm(A))
-end
-
-function main()
-    global A=rand(5000,3000)
-    
-    test()
-end
-
-a=rand(5,1)+1im*rand(5,1)
-b=rand(1,5)+1im*rand(1,5)
-
-(b*a)
-dot((b),conj!(a))
-
-a_A .* b_A
-
-G=rand(5,5)
-
-a=rand(5,1)
-b=rand(1,5)
-
-A*view(a,:,1) .* b
-A*view(a,:,1) .* view(b,1:1,:)
-
-
-b=Matrix(transpose(G[1,:])*G)
-
-@allocated b.=view(G,1:1,:)
-@allocated b.=transpose(view(G,1,:))
-@allocated a.=view(G,:,1)
-
-main()
-
-A=rand(5000,3000)
-B=rand(3000,5000)
-
-@allocated view(A,:,:).=B'
 
 # function QRRR(A)
 #     tau=Vector{Float64}(undef, size(A,2))

@@ -85,10 +85,10 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     BMsinv2=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
 
     for idx in 1:NN-1
-        @inbounds view(BMs1,:, : , idx) .= BM_F(model,ss[1],idx)
-        @inbounds view(BMs2,:,:,idx) .= BM_F(model,ss[2],idx)
-        @inbounds view(BMsinv1,:,:,idx) .= BMinv_F(model,ss[1],idx)
-        @inbounds view(BMsinv2,:,:,idx) .= BMinv_F(model,ss[2],idx)
+        BM_F!(view(BMs1,:, : , idx),model,ss[1],idx)
+        BM_F!(view(BMs2,:,:,idx),model,ss[2],idx)
+        BMinv_F!(view(BMsinv1,:,:,idx),model,ss[1],idx)
+        BMinv_F!(view(BMsinv2,:,:,idx),model,ss[2],idx)
     end
 
     BLMs1=Array{ComplexF64}(undef,ns,model.Ns,NN)
@@ -124,76 +124,21 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         LAPACK.orgqr!(tmpNn, tau, ns)
         view(BRMs2,:,:,i+1) .= tmpNn
 
-        # BLMs2[end-i,:,:]=Matrix(qr( (BLMs2[end-i+1,:,:]*BMs2[end-i+1,:,:])' ).Q)'
-        # BRMs2[i+1,:,:]=Matrix(qr( BMs2[i,:,:]*BRMs2[i,:,:] ).Q)
     end
     Θidx=div(NN,2)+1
-    ####################################################################
-    # println("--------Test BMs and BMinvs--------")
-    # BMs=zeros(ComplexF64,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
-    # BMinvs=zeros(ComplexF64,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
 
-    # for idxx in axes(BMs,3)
-    #     BMs[:,:,idxx]=BM_F(model,ss[1],idxx)
-    #     BMinvs[:,:,idxx]=BMinv_F(model,ss[1],idxx)
-    #     println(norm(BMs[:,:,idxx]-BMs1[:,:,idxx]),",",norm(BMinvs[:,:,idxx]-BMsinv1[:,:,idxx]))
-    # end
-    # println("--------Test BLMs and BRMs --------")
-    # BLMs=zeros(ComplexF64,ns,model.Ns,NN)
-    # BRMs=zeros(ComplexF64,model.Ns,ns,NN)
-    # BLMs[:,:,NN]=model.Pt'[:,:]
-    # BRMs[:,:,1]=model.Pt[:,:]
-    # for i in axes(BMs,3)
-    #     BLMs[:,:,NN-i]=Matrix(qr( (BLMs[:,:,NN-i+1]*BMs[:,:,NN-i])' ).Q)'
-    #     BRMs[:,:,i+1]=Matrix(qr( BMs[:,:,i]*BRMs[:,:,i] ).Q)
-    #     println(norm(BLMs1[:,:,end-i]-BLMs[:,:,end-i]),",",norm(BRMs1[:,:,i+1]-BRMs[:,:,i+1]))
-    # end
-    ####################################################################
-    # idx=3
-    # Gt1,G01,Gt01,G0t1=G4(model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1)
-    # Gt2,G02,Gt02,G0t2=G4(model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2)
-    # lt=model.nodes[idx]
-    # println(lt," ",div(model.Nt,2))
-    # Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],lt,div(model.Nt,2))
-    # Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],lt,div(model.Nt,2))
-    
-    # if norm(Gt1-Gt1_)+norm(Gt2-Gt2_)+norm(Gt01-Gt01_)+norm(Gt02-Gt02_)+norm(G0t1-G0t1_)+norm(G0t2-G0t2_)>1e-3
-    #     println( norm(Gt1-Gt1_),' ',norm(Gt2-Gt2_),'\n',norm(G01-G01_),' ',norm(G02-G02_),'\n',
-    #         norm(Gt01-Gt01_),' ',norm(Gt02-Gt02_),'\n',norm(G0t1-G0t1_),' ',norm(G0t2-G0t2_) )
-    #     error("WrapTime=0 ")
-    # end
-    # ####################################################################
 
     for loop in 1:Sweeps
         println("\n ====== Sweep $loop / $Sweeps ======")
-        # idx=1
-        # Gt1,G01,Gt01,G0t1=G4(model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1)
-        # Gt2,G02,Gt02,G0t2=G4(model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2)
-        #####################################################################
-        # Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],0,div(model.Nt,2))
-        # Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],0,div(model.Nt,2))
-            
-        # if norm(Gt1-Gt1_)+norm(Gt2-Gt2_)+norm(Gt01-Gt01_)+norm(Gt02-Gt02_)+norm(G0t1-G0t1_)+norm(G0t2-G0t2_)>1e-3
-        #     println( norm(Gt1-Gt1_),'\n',norm(Gt2-Gt2_),'\n',norm(Gt01-Gt01_),'\n',norm(Gt02-Gt02_),'\n',norm(G0t1-G0t1_),'\n',norm(G0t2-G0t2_) )
-        #     error("WrapTime=0 ")
-        # end
-        #####################################################################
-        # gmInv_A=GroverMatrix(view(G01,indexA,indexA),view(G02,indexA,indexA))
-        # detg_A=abs2(det(gmInv_A))
-        # LAPACK.getrf!(gmInv_A,ipivA)
-        # LAPACK.getri!(gmInv_A, ipivA)
-        # gmInv_B=GroverMatrix(view(G01,indexB,indexB),view(G02,indexB,indexB))
-        # detg_B=abs2(det(gmInv_B))
-        # LAPACK.getrf!(gmInv_B,ipivB)
-        # LAPACK.getri!(gmInv_B, ipivB)
+
         for lt in 1:model.Nt
             if  any(model.nodes.==(lt-1)) 
                 # println("\n Wrap Time: $lt")
                 idx= (lt==1) ? 2 : findfirst(model.nodes .== (lt-1))
-                view(BMs1,:,:,idx-1) .= BM_F(model,ss[1],idx-1)
-                view(BMsinv1,:,:,idx-1) .= BMinv_F(model,ss[1],idx-1)
-                view(BMs2,:,:,idx-1) .= BM_F(model,ss[2],idx-1)
-                view(BMsinv2,:,:,idx-1) .= BMinv_F(model,ss[2],idx-1)
+                BM_F!(view(BMs1,:,:,idx-1),model,ss[1],idx-1)
+                BMinv_F!(view(BMsinv1,:,:,idx-1),model,ss[1],idx-1)
+                BM_F!(view(BMs2,:,:,idx-1),model,ss[2],idx-1)
+                BMinv_F!(view(BMsinv2,:,:,idx-1),model,ss[2],idx-1)
                 for i in idx:max(Θidx,idx)
                     # println("update BR i=",i)
                     mul!(tmpNn, view(BMs1,:,:,i-1), view(BRMs1,:,:,i-1))
@@ -222,14 +167,13 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                     view(BLMs2,:,:,i) .= tmpNn'
                 end
                 idx=findfirst(model.nodes .== (lt-1))
-                Gt1,G01,Gt01,G0t1=G4(model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1)
-                Gt2,G02,Gt02,G0t2=G4(model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2)
-                gmInv_A=GroverMatrix(view(G01,indexA,indexA),view(G02,indexA,indexA))
-                
+                G4!(Gt1,G01,Gt01,G0t1,model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1)
+                G4!(Gt2,G02,Gt02,G0t2,model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2)
+                GroverMatrix!(gmInv_A,view(G01,indexA,indexA),view(G02,indexA,indexA))
                 detg_A=abs2(det(gmInv_A))
                 LAPACK.getrf!(gmInv_A,ipivA)
                 LAPACK.getri!(gmInv_A, ipivA)
-                gmInv_B=GroverMatrix(view(G01,indexB,indexB),view(G02,indexB,indexB))
+                GroverMatrix!(gmInv_B,view(G01,indexB,indexB),view(G02,indexB,indexB))
                 detg_B=abs2(det(gmInv_B))
                 LAPACK.getrf!(gmInv_B,ipivB)
                 LAPACK.getri!(gmInv_B, ipivB)
@@ -262,13 +206,21 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
 
             if lt==div(model.Nt,2)+1
                 mul!(tmpNN, model.eKinv, Diagonal(tmpN))
-                mul!(G0t1, G01.-II ,tmpNN)
+                tmpNN2 .= G01
+                for i in diagind(tmpNN2)
+                    tmpNN2[i] -= 1
+                end
+                mul!(G0t1, tmpNN2 ,tmpNN)
                 conj!(tmpN)
                 mul!(tmpNN, model.eK, G01)
                 mul!(Gt01,Diagonal(tmpN),tmpNN)
                 
                 mul!(tmpNN, model.eKinv, Diagonal(tmpN2))
-                mul!(G0t2, G02.-II ,tmpNN)
+                tmpNN2 .= G02
+                for i in diagind(tmpNN2)
+                    tmpNN2[i] -= 1
+                end
+                mul!(G0t2, tmpNN2 ,tmpNN)
                 conj!(tmpN2)
                 mul!(tmpNN, model.eK, G02)
                 mul!(Gt02,Diagonal(tmpN2),tmpNN)
@@ -310,7 +262,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpAA .= 2* G02[indexA,indexA] .- IA
                 tmpAA .= view(G02,indexA,indexA)
                 lmul!(2.0, tmpAA)
-                axpy!(-1.0, IA, tmpAA)
+                for i in diagind(tmpAA)
+                    tmpAA[i] -= 1
+                end
                 b_A .= view(Gt01,x:x,indexA)
                 mul!(tmp1A, b_A, tmpAA)
                 mul!(b_A, tmp1A, gmInv_A)
@@ -320,7 +274,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpBB .= 2*G02[indexB,indexB] .- IB
                 tmpBB .= view(G02,indexB,indexB)
                 lmul!(2.0, tmpBB)
-                axpy!(-1.0, IB, tmpBB) 
+                for i in diagind(tmpBB)
+                    tmpBB[i] -= 1
+                end
                 b_B .= view(Gt01,x:x,indexB)
                 mul!(tmp1B, b_B, tmpBB)
                 mul!(b_B, tmp1B, gmInv_B)
@@ -396,7 +352,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpAA .= 2*G01[indexA,indexA] .- IA
                 tmpAA .= view(G01,indexA,indexA)
                 lmul!(2.0, tmpAA)
-                axpy!(-1.0, IA, tmpAA) 
+                for i in diagind(tmpAA)
+                    tmpAA[i] -= 1
+                end
                 mul!(a_A, tmpAA, view(G0t2,indexA,x))
                 Tau_A=(b_A*a_A)[1,1]
 
@@ -406,7 +364,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpBB .= 2*G01[indexB,indexB] .- IB
                 tmpBB .= view(G01,indexB,indexB)
                 lmul!(2.0, tmpBB)
-                axpy!(-1.0, IB, tmpBB)
+                for i in diagind(tmpBB)
+                    tmpBB[i] -= 1
+                end
                 mul!(a_B, tmpBB, view(G0t2,indexB,x))
                 Tau_B=(b_B*a_B)[1,1]
 
@@ -479,27 +439,27 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
             ##------------------------------------------------------------------------
         end
 
-        Gt1,G01,Gt01,G0t1=G4(model.nodes,NN,BLMs1,BRMs1,BMs1,BMsinv1)
-        Gt2,G02,Gt02,G0t2=G4(model.nodes,NN,BLMs2,BRMs2,BMs2,BMsinv2)
-        gmInv_A=GroverMatrix(G01[indexA,indexA],G02[indexA,indexA])
+        G4!(Gt1,G01,Gt01,G0t1,model.nodes,NN,BLMs1,BRMs1,BMs1,BMsinv1)
+        G4!(Gt2,G02,Gt02,G0t2,model.nodes,NN,BLMs2,BRMs2,BMs2,BMsinv2)
+        GroverMatrix!(gmInv_A,view(G01,indexA,indexA),view(G02,indexA,indexA))
         detg_A=abs2(det(gmInv_A))
         LAPACK.getrf!(gmInv_A,ipivA)
         LAPACK.getri!(gmInv_A, ipivA)
-        gmInv_B=GroverMatrix(G01[indexB,indexB],G02[indexB,indexB])
+        GroverMatrix!(gmInv_B,view(G01,indexB,indexB),view(G02,indexB,indexB))
         detg_B=abs2(det(gmInv_B))
         LAPACK.getrf!(gmInv_B,ipivB)
         LAPACK.getri!(gmInv_B, ipivB)
 
-        println("\n ----------------reverse update ----------------")
+        # println("\n ----------------reverse update ----------------")
 
         for lt in model.Nt:-1:1
             if  any(model.nodes.==lt) 
                 idx= (lt==model.nodes[end]) ? NN : findfirst(model.nodes .== lt)+1
                 # println("\n Wrap Time: $lt")
-                view(BMs1,:,:,idx-1) .= BM_F(model,ss[1],idx-1)
-                view(BMs2,:,:,idx-1) .= BM_F(model,ss[2],idx-1)
-                view(BMsinv1,:,:,idx-1) .=BMinv_F(model,ss[1],idx-1)
-                view(BMsinv2,:,:,idx-1) .=BMinv_F(model,ss[2],idx-1)
+                BM_F!(view(BMs1,:,:,idx-1),model,ss[1],idx-1)
+                BM_F!(view(BMs2,:,:,idx-1),model,ss[2],idx-1)
+                BMinv_F!(view(BMsinv1,:,:,idx-1),model,ss[1],idx-1)
+                BMinv_F!(view(BMsinv2,:,:,idx-1),model,ss[2],idx-1)
 
                 for i in idx-1:-1:min(Θidx,idx)-1
                     # println("update BL i=",i)
@@ -536,13 +496,13 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                     # BRMs2[i,:,:]=Matrix(qr(BRMs2[i,:,:]).Q)
                 end
                 idx=findfirst(model.nodes .== lt)
-                Gt1,G01,Gt01,G0t1=G4(model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1)
-                Gt2,G02,Gt02,G0t2=G4(model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2)
-                gmInv_A=GroverMatrix(view(G01,indexA,indexA),view(G02,indexA,indexA))
+                G4!(Gt1,G01,Gt01,G0t1,model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1)
+                G4!(Gt2,G02,Gt02,G0t2,model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2)
+                GroverMatrix!(gmInv_A,view(G01,indexA,indexA),view(G02,indexA,indexA))
                 detg_A=abs2(det(gmInv_A))
                 LAPACK.getrf!(gmInv_A,ipivA)
                 LAPACK.getri!(gmInv_A, ipivA)
-                gmInv_B=GroverMatrix(view(G01,indexB,indexB),view(G02,indexB,indexB))
+                GroverMatrix!(gmInv_B,view(G01,indexB,indexB),view(G02,indexB,indexB))
                 detg_B=abs2(det(gmInv_B))
                 LAPACK.getrf!(gmInv_B,ipivB)
                 LAPACK.getri!(gmInv_B, ipivB)
@@ -627,7 +587,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpAA .= 2* G02[indexA,indexA] .- IA
                 tmpAA .= view(G02,indexA,indexA)
                 lmul!(2.0, tmpAA)
-                axpy!(-1.0, IA, tmpAA)
+                for i in diagind(tmpAA)
+                    tmpAA[i] -= 1
+                end
                 b_A .= view(Gt01,x:x,indexA)
                 mul!(tmp1A, b_A, tmpAA)
                 mul!(b_A, tmp1A, gmInv_A)
@@ -637,7 +599,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpBB .= 2*G02[indexB,indexB] .- IB
                 tmpBB .= view(G02,indexB,indexB)
                 lmul!(2.0, tmpBB)
-                axpy!(-1.0, IB, tmpBB) 
+                for i in diagind(tmpBB)
+                    tmpBB[i] -= 1
+                end
                 b_B .= view(Gt01,x:x,indexB)
                 mul!(tmp1B, b_B, tmpBB)
                 mul!(b_B, tmp1B, gmInv_B)
@@ -713,7 +677,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpAA .= 2*G01[indexA,indexA] .- IA
                 tmpAA .= view(G01,indexA,indexA)
                 lmul!(2.0, tmpAA)
-                axpy!(-1.0, IA, tmpAA) 
+                for i in diagind(tmpAA)
+                    tmpAA[i] -= 1
+                end
                 mul!(a_A, tmpAA, view(G0t2,indexA,x))
                 Tau_A=(b_A*a_A)[1,1]
 
@@ -723,7 +689,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 # @views tmpBB .= 2*G01[indexB,indexB] .- IB
                 tmpBB .= view(G01,indexB,indexB)
                 lmul!(2.0, tmpBB)
-                axpy!(-1.0, IB, tmpBB)
+                for i in diagind(tmpBB)
+                    tmpBB[i] -= 1
+                end
                 mul!(a_B, tmpBB, view(G0t2,indexB,x))
                 Tau_B=(b_B*a_B)[1,1]
 
@@ -758,7 +726,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                     axpy!(Δ2/r2, tmpNN, G02)
                     mul!(tmpNN, view(Gt2,:,x),view(Gt02,x:x,:))
                     axpy!(Δ2/r2, tmpNN, Gt02)
-                    tmp1N[1, :] .= -view(Gt1,x, :)
+                    tmp1N[1, :] .= -view(Gt2,x, :)
                     tmp1N[1, x] += 1
                     mul!(tmpNN, view(G0t2,:,x),tmp1N)
                     axpy!(-Δ2/r2, tmpNN, G0t2)

@@ -1,4 +1,128 @@
 # 2d Trotter Decomposition
+function BM_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
+    """
+    不包头包尾
+    """
+    Ns=model.Ns
+    nodes=model.nodes
+    η=model.η
+    α=model.α
+
+    @assert 0< idx <=length(model.nodes)
+
+    fill!(BM,0)
+    @inbounds for i in diagind(BM)
+        BM[i] = 1
+    end
+    for lt in nodes[idx] + 1:nodes[idx + 1]
+        @inbounds @simd for i in 1:Ns
+            tmpN[i] =  cis( α *η[s[i, lt]])
+        end
+        mul!(tmpNN,model.eK, BM)
+        mul!(BM,Diagonal(tmpN), tmpNN)
+    end
+end
+
+function BMinv_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
+    """
+    不包头包尾
+    """
+    Ns=model.Ns
+    nodes=model.nodes
+    η=model.η
+    α=model.α
+
+    @assert 0< idx <=length(model.nodes)
+    
+    fill!(BM,0)
+    @inbounds for i in diagind(BM)
+        BM[i] = 1
+    end
+
+    for lt in nodes[idx] + 1:nodes[idx + 1]
+        @inbounds for i in 1:Ns
+            tmpN[i] =  cis( -α *η[s[i, lt]])
+        end
+        mul!(tmpNN,BM, model.eKinv)
+        mul!(BM,tmpNN,Diagonal(tmpN))
+    end
+end
+
+function G4!(Gt::Array{ComplexF64, 2},G0::Array{ComplexF64, 2},Gt0::Array{ComplexF64, 2},G0t::Array{ComplexF64, 2},nodes::Vector{Int64},idx::Int64,BLMs::Array{ComplexF64,3},BRMs::Array{ComplexF64,3},BMs::Array{ComplexF64,3},BMinvs::Array{ComplexF64,3})
+    Θidx=div(length(nodes),2)+1
+
+    mul!(tmpnn,view(BLMs,:,:,idx), view(BRMs,:,:,idx))
+    LAPACK.getrf!(tmpnn,ipiv)
+    LAPACK.getri!(tmpnn, ipiv)
+    mul!(tmpNn,view(BRMs,:,:,idx), tmpnn)
+    mul!(tmpNN, tmpNn, view(BLMs,:,:,idx))
+    Gt .= II .- tmpNN
+    
+    mul!(tmpnn,view(BLMs,:,:,Θidx), view(BRMs,:,:,Θidx))
+    LAPACK.getrf!(tmpnn,ipiv)
+    LAPACK.getri!(tmpnn, ipiv)
+    mul!(tmpNn,view(BRMs,:,:,Θidx), tmpnn)
+    mul!(tmpNN, tmpNn, view(BLMs,:,:,Θidx))
+    G0 .= II .- tmpNN
+    
+    Gt0 .= II
+    G0t .= II
+    if idx<Θidx
+        for j in idx:Θidx-1
+            if j==idx
+                tmpNN .= II .- Gt
+            else
+                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
+                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+            end
+            mul!(tmpNN2,Gt0, tmpNN)
+            mul!(Gt0, tmpNN2, view(BMinvs,:,:,j))
+            tmpNN2 .= II .- tmpNN
+            mul!(tmpNN,tmpNN2, G0t)
+            mul!(G0t, view(BMs,:,:,j), tmpNN)
+        end
+        lmul!(-1.0, Gt0)
+    elseif idx>Θidx
+        for j in Θidx:idx-1
+            if j==Θidx
+                tmpNN .=II .- G0
+            else
+                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
+                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+            end
+            mul!(tmpNN2, G0t, tmpNN)
+            mul!(G0t, tmpNN2,view(BMinvs,:,:,j))
+            tmpNN2 .= II .- tmpNN
+            mul!(tmpNN, tmpNN2, Gt0)
+            mul!(Gt0, view(BMs,:,:,j), tmpNN)
+        end
+        lmul!(-1.0, G0t)
+    else
+        G0.=Gt
+        Gt0.=Gt.-II
+        G0t.=Gt
+    end
+end
+
+function GroverMatrix!(GM::Matrix{ComplexF64},G1::SubArray{ComplexF64, 2, Matrix{ComplexF64}, Tuple{Vector{Int64}, Vector{Int64}}, false},G2::SubArray{ComplexF64, 2, Matrix{ComplexF64}, Tuple{Vector{Int64}, Vector{Int64}}, false})
+    mul!(GM,G1,G2)
+    lmul!(2.0, GM)
+    axpy!(-1.0, G1, GM)
+    axpy!(-1.0, G2, GM)
+    for i in diagind(GM)
+        GM[i] += 1.0
+    end
+end
+
+
+
+
 
 function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
     """
@@ -6,30 +130,27 @@ function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Compl
     """
     Ns=model.Ns
     nodes=model.nodes
-    eK=model.eK
     η=model.η
     α=model.α
 
     @assert 0< idx <=length(model.nodes)
 
-    # D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
-    # tmp=Matrix{ComplexF64}(undef, Ns, Ns)
-    BM=zeros(ComplexF64,Ns,Ns)
-    @inbounds for i in diagind(BM)
-        BM[i] = one(eltype(BM))
+    fill!(tmpNN,0)
+    @inbounds for i in diagind(tmpNN)
+        tmpNN[i] = 1
     end
     for lt in nodes[idx] + 1:nodes[idx + 1]
         @inbounds begin
             for i in 1:Ns
                 tmpN[i] =  cis( α *η[s[i, lt]])
             end
-            mul!(tmpNN,eK, BM)
-            mul!(BM,Diagonal(tmpN), tmpNN)
+            mul!(tmpNN2,model.eK, tmpNN)
+            mul!(tmpNN,Diagonal(tmpN), tmpNN2)
             # BM = Diagonal(D) * eK * BM
         end
     end
 
-    return BM
+    return tmpNN
 end
 
 function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
@@ -38,17 +159,14 @@ function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Co
     """
     Ns=model.Ns
     nodes=model.nodes
-    eKinv=model.eKinv
     η=model.η
     α=model.α
 
     @assert 0< idx <=length(model.nodes)
     
-    # D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
-    # tmp=Matrix{ComplexF64}(undef, Ns, Ns)
-    BMinv=zeros(ComplexF64,Ns,Ns)
-    @inbounds for i in diagind(BMinv)
-        BMinv[i] = one(eltype(BMinv))
+    fill!(tmpNN,0)
+    @inbounds for i in diagind(tmpNN)
+        tmpNN[i] = 1
     end
 
     for lt in nodes[idx] + 1:nodes[idx + 1]
@@ -56,13 +174,12 @@ function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Co
             for i in 1:Ns
                 tmpN[i] =  cis( -α *η[s[i, lt]])
             end
-            mul!(tmpNN,BMinv, eKinv)
-            mul!(BMinv,tmpNN,Diagonal(tmpN))
-            # BMinv = BMinv * eKinv * Diagonal(D) 
+            mul!(tmpNN2,tmpNN, model.eKinv)
+            mul!(tmpNN,tmpNN2,Diagonal(tmpN))
         end
     end
 
-    return BMinv
+    return tmpNN
 end
 
 function G4(nodes,idx,BLMs,BRMs,BMs,BMinvs)
@@ -326,10 +443,7 @@ function G4_old(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
 
 end
 
-function GroverMatrix_old(G1,G2)
-    II=I(size(G1)[1])
-    return G1*G2+(II-G1)*(II-G2)
-end
+
 
 function GroverMatrix(G1,G2)
     n = size(G1, 1)
