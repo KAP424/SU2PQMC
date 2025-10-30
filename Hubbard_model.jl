@@ -80,7 +80,3 @@ function setμ(model::_Hubbard_Para, μ)
     E, V = eigen(model.K)
     model.Pt .= V[:, 1:N_particle]
 end
-
-# function setNN_hopping(t)
-    
-# end

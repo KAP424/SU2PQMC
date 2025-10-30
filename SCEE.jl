@@ -62,7 +62,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     tmpAA = Matrix{ComplexF64}(undef ,length(indexA),length(indexA))
     tmpBB = Matrix{ComplexF64}(undef ,length(indexB),length(indexB))
 
-    rng=MersenneTwister(Threads.threadid()+round(Int,time()*1000))
+    rng=MersenneTwister(Threads.threadid()+time_ns())
     elements=(1, 2, 3, 4)
     samplers_dict = Dict{UInt8, Random.Sampler}()
     for excluded in elements
@@ -76,8 +76,6 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     O[1]=λ
 
     global II=Diagonal(ones(ComplexF64,model.Ns))
-    IA=Diagonal(ones(ComplexF64,length(indexA)))
-    IB=Diagonal(ones(ComplexF64,length(indexB)))
 
     BMs1=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
     BMs2=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns

@@ -49,6 +49,7 @@ function BMinv_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
 end
 
 function G4!(Gt::Array{ComplexF64, 2},G0::Array{ComplexF64, 2},Gt0::Array{ComplexF64, 2},G0t::Array{ComplexF64, 2},nodes::Vector{Int64},idx::Int64,BLMs::Array{ComplexF64,3},BRMs::Array{ComplexF64,3},BMs::Array{ComplexF64,3},BMinvs::Array{ComplexF64,3})
+    # II , tmpnn, tmpNn, tmpNN, tmpNN2, ipiv global
     Θidx=div(length(nodes),2)+1
 
     mul!(tmpnn,view(BLMs,:,:,idx), view(BRMs,:,:,idx))

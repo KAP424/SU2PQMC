@@ -9,12 +9,12 @@ rng=MersenneTwister(1)
 
 t=1;   Lattice="HoneyComb120"    
 U=3.8;     Δt=0.1;     Θ=3.0;
-BatchSize=10;
+BatchSize=1000;
 Sweeps=1
 L=15
 
 #------------------phy_PQMC-------------------#
-U=3.8;     Δt=0.1;     Θ=3.0;   L=15;       Sweeps=1;
+# U=3.8;     Δt=0.1;     Θ=3.0;   L=15;       Sweeps=1;
 # OLD 89.96 seconds
 # NEW 81.889 seconds
 # two with no update 15.718 s (2335 allocations: 1.26 GiB)
@@ -29,16 +29,16 @@ U=3.8;     Δt=0.1;     Θ=3.0;   L=15;       Sweeps=1;
 # 扫描更新！！！   19.314 s (1005949 allocations: 954.42 MiB)
 # 扫描不更新！！！ 14.464 s (1566 allocations: 729.15 MiB)
 # 18.346 s (1005819 allocations: 898.78 MiB)
+# 17.965 s (1162997 allocations: 326.09 MiB)
 
-# Final 17.965 s (1162997 allocations: 326.09 MiB)
+# Final 17.931 s (1155434 allocations: 256.35 MiB)
 
-#------------------SCEEicr_PQMC-------------------#
-U=3.8;     Δt=0.1;     Θ=3.0;   L=15;    Sweeps=1;
+#------SCEEicr_PQMC-------#
+# U=3.8;     Δt=0.1;     Θ=3.0;   L=15;    Sweeps=1;
 # OLD 1025.714 seconds
 # NEW 886.15 seconds
 # !!! 115.434 s (6079507 allocations: 1.37 GiB)
 # 128.842 s (6038300 allocations: 835.83 MiB)
-
 # Final 95.108 s (5242872 allocations: 662.00 MiB)
 
 site=[L,L]
@@ -49,144 +49,3 @@ s=Initial_s(model,rng)
 path="C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/SPEED/"
 println(@btime phy_update($path,$model,1,0,$Initial_s(model,rng)))
 # phy_update(path,model,1,0,Initial_s(model,rng))
-
-
-
-# function BM_F22(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
-#     Ns=model.Ns
-#     nodes=model.nodes
-#     eK=model.eK
-#     η=model.η
-#     α=model.α
-
-#     if idx > length(nodes) || idx < 1
-#         error("idx out of range")
-#     end
-#     D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
-#     tmp=Matrix{ComplexF64}(undef, Ns, Ns)
-#     BM=Matrix{ComplexF64}(undef,Ns,Ns)
-#     @inbounds for i in diagind(BM)
-#         BM[i] = one(eltype(BM))
-#     end
-#     for lt in nodes[idx] + 1:nodes[idx + 1]
-#         @inbounds begin
-#             for i in 1:Ns
-#                 D[i] =  cis( α *η[s[i, lt]])
-#             end
-#             mul!(tmp,eK, BM)
-#             # (BM, tmp) = (tmp, BM)
-#             # for i ∈ 1:Ns
-#             #     BM[i, :] .*= D[i]
-#             # end
-#             for i in 1:Ns
-#                 BM[i, :] .= D[i] * tmp[i, :]
-#             end
-#             # mul!(BM,Diagonal(D), tmp)
-#             # BM = diagm(expD) * eK * BM
-#         end
-#     end
-#     return BM
-# end
-
-# function BM_F2(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
-#     Ns=model.Ns
-#     nodes=model.nodes
-#     eK=model.eK
-#     η=model.η
-#     α=model.α
-
-#     if idx > length(nodes) || idx < 1
-#         error("idx out of range")
-#     end
-#     D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
-#     # tmp=Matrix{ComplexF64}(undef, Ns, Ns)
-#     BM=Matrix{ComplexF64}(undef,Ns,Ns)
-#     @inbounds for i in diagind(BM)
-#         BM[i] = one(eltype(BM))
-#     end
-#     for lt in nodes[idx] + 1:nodes[idx + 1]
-#         @inbounds begin
-#             for i in 1:Ns
-#                 D[i] =  cis( α *η[s[i, lt]])
-#             end
-#             # mul!(tmp,eK, BM)
-#             # mul!(BM,diagm(D), tmp)
-#             BM = Diagonal(D) * eK * BM
-#         end
-#     end
-
-#     return BM
-# end
-
-# function BM_F3(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
-#     Ns=model.Ns
-#     nodes=model.nodes
-#     eK=model.eK
-#     η=model.η
-#     α=model.α
-
-#     if idx > length(nodes) || idx < 1
-#         error("idx out of range")
-#     end
-#     D = Array{ComplexF64,1}(undef, Ns)  # 预分配 D 数组
-#     # tmp=Matrix{ComplexF64}(undef, Ns, Ns)
-#     BM=Matrix{ComplexF64}(undef,Ns,Ns)
-#     @inbounds for i in diagind(BM)
-#         BM[i] = one(eltype(BM))
-#     end
-#     for lt in nodes[idx] + 1:nodes[idx + 1]
-#         @inbounds begin
-#             for i in 1:Ns
-#                 @fastmath D[i] =  cis( α *η[s[i, lt]])
-#             end
-#             # mul!(tmp,eK, BM)
-#             # mul!(BM,diagm(D), tmp)
-#             @fastmath BM = Diagonal(D) * eK * BM
-#         end
-#     end
-
-#     return BM
-# end
-
-# @benchmark BM_F2($model,$s,1)
-# @benchmark BM_F3($model,$s,1)
-
-# Threads.nthreads()
-# norm(BM_F22(model,s,1)-BM_F2(model,s,1))
-
-# ------------------------------------------------------------------------
-# TEST for SCEE
-
-# phy_update(path,model,0,Sweeps,Initial_s(model,rng))
-
-# # # Half
-# indexA=area_index(Lattice,site,([1,1],[div(L,3),L]))
-# 2.314 s (314 allocations: 793.47 MiB)
-
-
-# # # HalfHalf
-# indexB=area_index(Lattice,site,([1,1],[div(L,3),div(2*L,3)]))
-
-# ss=[Initial_s(model,rng)[:,:],Initial_s(model,rng)[:,:]]
-# λ=0.5
-# Nλ=2
-
-# ctrl_SCEEicr(path,model,indexA,indexB,Sweeps,λ,Nλ,ss,true)
-
-
-
-# using LinearAlgebra, BenchmarkTools
-
-# n = 1000
-# A = rand(n, n)
-# B = rand(n, n)
-# C = similar(A)
-
-# # 测试 1: 直接赋值
-# @btime $A = $B * $C;
-
-# # 测试 2: 原地操作
-# @btime mul!($A, $B, $C);
-
-
-
