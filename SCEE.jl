@@ -6,7 +6,6 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     ns=div(model.Ns, 2)
     NN=length(model.nodes)
     tau = Vector{ComplexF64}(undef, ns)
-    global ipiv = Vector{LAPACK.BlasInt}(undef, ns)
     ipivA = Vector{LAPACK.BlasInt}(undef, length(indexA))
     ipivB = Vector{LAPACK.BlasInt}(undef, length(indexB))
 
@@ -51,12 +50,11 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     a_B= Matrix{ComplexF64}(undef ,length(indexB),1)
 
     # 预分配临时数组
-    global tmpN = Vector{ComplexF64}(undef, Ns)
+    tmpN = Vector{ComplexF64}(undef, Ns)
     tmpN2 = Vector{ComplexF64}(undef, Ns)
-    global tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
-    global tmpNN2 = Matrix{ComplexF64}(undef, Ns, Ns)
-    global tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
-    global tmpnn = Matrix{ComplexF64}(undef, ns, ns)
+    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
+    tmpNN2 = Matrix{ComplexF64}(undef, Ns, Ns)
+    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
     tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
     tmp1N = Matrix{ComplexF64}(undef ,1, Ns)
     tmpAA = Matrix{ComplexF64}(undef ,length(indexA),length(indexA))
@@ -75,7 +73,6 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     O=zeros(Float64,Sweeps+1)
     O[1]=λ
 
-    global II=Diagonal(ones(ComplexF64,model.Ns))
 
     BMs1=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
     BMs2=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns

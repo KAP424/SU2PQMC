@@ -32,8 +32,8 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     BRs = Array{ComplexF64}(undef, model.Ns, ns,NN)
 
     # 预分配临时数组
-    global tmpN = Vector{ComplexF64}(undef, Ns)
-    global tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
+    tmpN = Vector{ComplexF64}(undef, Ns)
+    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
     DD = Diagonal(tmpN)
     BM = Matrix{ComplexF64}(undef, Ns, Ns)
     tmpNn = Matrix{ComplexF64}(undef, Ns, ns)

@@ -7,8 +7,10 @@ function BM_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
     nodes=model.nodes
     η=model.η
     α=model.α
-
     @assert 0< idx <=length(model.nodes)
+
+    tmpN = Vector{ComplexF64}(undef, Ns)
+    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
 
     fill!(BM,0)
     @inbounds for i in diagind(BM)
@@ -31,9 +33,11 @@ function BMinv_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
     nodes=model.nodes
     η=model.η
     α=model.α
-
     @assert 0< idx <=length(model.nodes)
-    
+
+    tmpN = Vector{ComplexF64}(undef, Ns)
+    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
+
     fill!(BM,0)
     @inbounds for i in diagind(BM)
         BM[i] = 1
@@ -49,7 +53,15 @@ function BMinv_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
 end
 
 function G4!(Gt::Array{ComplexF64, 2},G0::Array{ComplexF64, 2},Gt0::Array{ComplexF64, 2},G0t::Array{ComplexF64, 2},nodes::Vector{Int64},idx::Int64,BLMs::Array{ComplexF64,3},BRMs::Array{ComplexF64,3},BMs::Array{ComplexF64,3},BMinvs::Array{ComplexF64,3})
-    # II , tmpnn, tmpNn, tmpNN, tmpNN2, ipiv global
+    Ns=size(BLMs,2)
+    ns=size(BLMs,1)
+    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
+    tmpnn = Matrix{ComplexF64}(undef, ns, ns)
+    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
+    II=Diagonal(ones(ComplexF64,Ns))
+    tmpNN2 = Matrix{ComplexF64}(undef, Ns, Ns)
+    ipiv = Vector{LAPACK.BlasInt}(undef, ns)
+
     Θidx=div(length(nodes),2)+1
 
     mul!(tmpnn,view(BLMs,:,:,idx), view(BRMs,:,:,idx))
@@ -120,7 +132,6 @@ function GroverMatrix!(GM::Matrix{ComplexF64},G1::SubArray{ComplexF64, 2, Matrix
         GM[i] += 1.0
     end
 end
-
 
 
 

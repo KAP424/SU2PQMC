@@ -28,8 +28,8 @@ function main()
     λ=0.5
     Nλ=2
 
-    # println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
-    ctrl_SCEEicr(path,model,indexA,indexB,35,λ,Nλ,ss,true)
+    println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
+    # ctrl_SCEEicr(path,model,indexA,indexB,35,λ,Nλ,ss,true)
 end
 
 main()
