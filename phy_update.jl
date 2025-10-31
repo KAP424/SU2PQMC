@@ -2,7 +2,7 @@
 
 function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweeps::Int64, s::Array{UInt8, 2})
     Ns=model.Ns
-    ns=div(model.Ns, 2)
+    ns=div(Ns, 2)
     NN=length(model.nodes)
     tau = Vector{ComplexF64}(undef, ns)
     ipiv = Vector{LAPACK.BlasInt}(undef, ns)
@@ -24,12 +24,12 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     mA = mB = nn = R0 = R1 = Ek = C0 = Cmax = 0.0
     counter = 0
 
-    II = I(model.Ns)
-    G = Matrix{ComplexF64}(undef ,model.Ns, model.Ns)
+    II = Diagonal(ones(ComplexF64,Ns))
+    G = Matrix{ComplexF64}(undef ,Ns, Ns)
 
     # 预分配 BL 和 BR
-    BLs = Array{ComplexF64}(undef, ns, model.Ns,NN)
-    BRs = Array{ComplexF64}(undef, model.Ns, ns,NN)
+    BLs = Array{ComplexF64}(undef, ns, Ns,NN)
+    BRs = Array{ComplexF64}(undef, Ns, ns,NN)
 
     # 预分配临时数组
     tmpN = Vector{ComplexF64}(undef, Ns)
@@ -46,10 +46,9 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     for idx in NN-1:-1:2
         BM_F!(BM,model, s, idx)
         mul!(tmpnN,view(BLs,:,:,idx+1), BM)
-        tmpNn.=tmpnN'
-        LAPACK.geqrf!(tmpNn, tau)
-        LAPACK.orgqr!(tmpNn, tau, ns)
-        view(BLs,:,:,idx) .= tmpNn'
+        LAPACK.gerqf!(tmpnN, tau)
+        LAPACK.orgqr!(tmpnN, tau, ns)
+        view(BLs,:,:,idx) .= tmpnN
         # view(BLs,:,:,idx) .= Matrix(qr!(tmpNn).Q)'
     end
     
@@ -58,10 +57,9 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
         
         BM_F!(BM,model, s, 1)
         mul!(tmpnN,view(BLs,:,:,2), BM)
-        tmpNn.=tmpnN'
-        LAPACK.geqrf!(tmpNn, tau)
-        LAPACK.orgqr!(tmpNn, tau, ns)
-        view(BLs,:,:,1) .= tmpNn'
+        LAPACK.gerqf!(tmpnN, tau)
+        LAPACK.orgrq!(tmpnN, tau, ns)
+        view(BLs,:,:,1) .= tmpnN
         
         mul!(tmpnn, view(BLs,:,:,1), view(BRs,:,:,1))
         LAPACK.getrf!(tmpnn,ipiv)
@@ -108,7 +106,7 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
             # end
             #####################################################################
 
-            @inbounds @simd for x in 1:model.Ns
+            @inbounds @simd for x in 1:Ns
                 sx = rand(rng,  samplers_dict[s[x, lt]])
                 @fastmath Δ = cis( model.α * (model.η[sx] - model.η[s[x, lt]])) - 1
                 @fastmath r = 1 + Δ * (1 - G[x, x])
@@ -183,10 +181,9 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
             if any(model.nodes.== lt)
                 BM_F!(BM,model, s, idx)
                 mul!(tmpnN,view(BLs,:,:,idx+1),BM)
-                tmpNn.=tmpnN'
-                LAPACK.geqrf!(tmpNn, tau)
-                LAPACK.orgqr!(tmpNn, tau, ns)
-                view(BLs,:,:,idx).=tmpNn'
+                LAPACK.gerqf!(tmpnN, tau)
+                LAPACK.orgrq!(tmpnN, tau, ns)
+                view(BLs,:,:,idx).=tmpnN
                 # BL .= Matrix(qr(( BL * BM )').Q)'
 
                 mul!(tmpnn, view(BLs,:,:,idx), view(BRs,:,:,idx))
@@ -217,7 +214,7 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
             # end
             #####################################################################
 
-            @inbounds @simd for x in 1:model.Ns
+            @inbounds @simd for x in 1:Ns
                 sx = rand(rng,  samplers_dict[s[x, lt]])
                 @fastmath Δ = cis( model.α * (model.η[sx] - model.η[s[x, lt]])) - 1
                 @fastmath r = 1 + Δ * (1 - G[x, x])

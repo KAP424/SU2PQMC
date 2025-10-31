@@ -46,7 +46,6 @@ function Hubbard_Para(t, U, Lattice::String, site, Δt, Θ, BatchSize, Initial::
     eKinv = V * diagm(exp_pos) * V'
 
     Pt = zeros(Float64, Ns, div(Ns, 2))  # 预分配 Pt
-
     if Initial == "H0"
         KK = copy(K)
         μ = 1e-5
@@ -60,12 +59,23 @@ function Hubbard_Para(t, U, Lattice::String, site, Δt, Θ, BatchSize, Initial::
         end
         E, V = eigen(KK)
         Pt .= V[:, 1:div(Ns, 2)]
-    elseif Initial == "V"
-        for i in 1:div(Ns, 2)
-            Pt[i * 2, i] = 1
+    elseif Initial=="V" 
+        if occursin("HoneyComb", Lattice)
+            for i in 1:div(Ns,2)
+                Pt[i*2,i]=1
+            end
+        else
+            count=1
+            for i in 1:Ns
+                x,y=i_xy(Lattice,site,i)
+                if (x+y)%2==1
+                    Pt[i,count]=1
+                    count+=1
+                end
+            end
         end
     end
-
+    
     if div(Nt, 2) % BatchSize == 0
         nodes = collect(0:BatchSize:Nt)
     else

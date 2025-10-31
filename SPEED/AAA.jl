@@ -2,7 +2,19 @@ using BenchmarkTools, LinearAlgebra,Random
 using LinearAlgebra.BLAS,LinearAlgebra.LAPACK
 push!(LOAD_PATH,"C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/")
 
+A=rand(10,100)*1im
+A_copy=copy(A)
+tau = Vector{ComplexF64}(undef, 10)
+LAPACK.gerqf!(A,tau)
+LAPACK.orgrq!(A,tau,10)
+A*A'
 
+
+tmpNn=A_copy'[:,:]
+LAPACK.geqrf!(tmpNn, tau)
+LAPACK.orgqr!(tmpNn, tau, 10)
+
+norm(A-tmpNn')
 
 n = 512
 A = randn(n, n)

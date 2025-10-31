@@ -98,10 +98,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
 
     for i in 1:NN-1
         mul!(tmpnN,view(BLMs1,:,:,NN-i+1),view(BMs1,:,:,NN-i))
-        tmpNn.=tmpnN'
-        LAPACK.geqrf!(tmpNn, tau)
-        LAPACK.orgqr!(tmpNn, tau, ns)
-        view(BLMs1,:,:,NN-i) .= tmpNn'
+        LAPACK.gerqf!(tmpnN, tau)
+        LAPACK.orgrq!(tmpnN, tau, ns)
+        view(BLMs1,:,:,NN-i) .= tmpnN
         
         mul!(tmpNn, view(BMs1,:,:,i), view(BRMs1,:,:,i))
         LAPACK.geqrf!(tmpNn, tau)
@@ -109,10 +108,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         view(BRMs1,:,:,i+1) .= tmpNn
         # ---------------------------------------------------------------
         mul!(tmpnN,view(BLMs2,:,:,NN-i+1),view(BMs2,:,:,NN-i))
-        tmpNn.=tmpnN'
-        LAPACK.geqrf!(tmpNn, tau)
-        LAPACK.orgqr!(tmpNn, tau, ns)
-        view(BLMs2,:,:,NN-i) .= tmpNn'
+        LAPACK.gerqf!(tmpnN, tau)
+        LAPACK.orgrq!(tmpnN, tau, ns)
+        view(BLMs2,:,:,NN-i) .= tmpnN
 
         mul!(tmpNn, view(BMs2,:,:,i), view(BRMs2,:,:,i))
         LAPACK.geqrf!(tmpNn, tau)
@@ -124,7 +122,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
 
 
     for loop in 1:Sweeps
-        println("\n ====== Sweep $loop / $Sweeps ======")
+        # println("\n ====== Sweep $loop / $Sweeps ======")
 
         for lt in 1:model.Nt
             if  any(model.nodes.==(lt-1)) 
@@ -150,16 +148,14 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                 for i in idx:-1:min(Θidx,idx)-1
                     # println("update BL i=",i)
                     mul!(tmpnN,view(BLMs1,:,:,i+1),view(BMs1,:,:,i))
-                    tmpNn.=tmpnN'
-                    LAPACK.geqrf!(tmpNn,tau)
-                    LAPACK.orgqr!(tmpNn, tau, ns)
-                    view(BLMs1,:,:,i) .= tmpNn'
+                    LAPACK.gerqf!(tmpnN,tau)
+                    LAPACK.orgrq!(tmpnN, tau, ns)
+                    view(BLMs1,:,:,i) .= tmpnN
                     # ---------------------------------------------------------------
                     mul!(tmpnN,view(BLMs2,:,:,i+1),view(BMs2,:,:,i))
-                    tmpNn.=tmpnN'
-                    LAPACK.geqrf!(tmpNn,tau)
-                    LAPACK.orgqr!(tmpNn, tau, ns)
-                    view(BLMs2,:,:,i) .= tmpNn'
+                    LAPACK.gerqf!(tmpnN,tau)
+                    LAPACK.orgrq!(tmpnN, tau, ns)
+                    view(BLMs2,:,:,i) .= tmpnN
                 end
                 idx=findfirst(model.nodes .== (lt-1))
                 G4!(Gt1,G01,Gt01,G0t1,model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1)
