@@ -36,3 +36,27 @@ for k = 1:1000
 end
 using  Base.Threads
 @Threads.thread_local L=1
+
+
+using LinearAlgebra
+
+# 定义一个 Hermitian 矩阵 A
+A = [1.0 + 0im  2.0 - 1im;
+     2.0 + 1im  3.0 + 0im]
+
+# 定义向量 x 和 y
+x = [1.0 + 1im, 2.0 - 1im]
+y = [0.5 + 0.5im, 1.0 - 0.5im]
+
+# 定义标量 α 和 β
+α = 1.0 + 0im
+β = 0.5 + 0im
+
+# 调用 hemv!
+Ah=Hermitian(A)
+
+
+BLAS.hemv!('U', α, A, x, β, y)
+
+# 输出结果
+println("结果向量 y: ", y)

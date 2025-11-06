@@ -188,7 +188,7 @@ function Free_G!(G,Lattice,site,Θ,Initial)
                 KK[i,i]+=μ*(-1)^(x+y)
             end
         end
-        E,V=eigen(KK)
+        E,V=LAPACK.syevd!('V', 'L',KK[:,:])
         Pt=V[:,1:div(Ns,2)]
     elseif Initial=="V" 
         if occursin("HoneyComb", Lattice)
@@ -207,7 +207,7 @@ function Free_G!(G,Lattice,site,Θ,Initial)
         end
     end
 
-    E,V=eigen(K)
+    E,V=LAPACK.syevd!('V', 'L',K[:,:])
     eK=V*Diagonal(exp.(-Δt.*E))*V'
 
     BL = Array{Float64}(undef, ns, Ns)
@@ -255,328 +255,328 @@ end
 
 #######################################################################################################################################
 
-# function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
-#     """
-#     不包头包尾
-#     """
-#     Ns=model.Ns
-#     nodes=model.nodes
-#     η=model.η
-#     α=model.α
+function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
+    """
+    不包头包尾
+    """
+    Ns=model.Ns
+    nodes=model.nodes
+    η=model.η
+    α=model.α
 
-#     @assert 0< idx <=length(model.nodes)
+    @assert 0< idx <=length(model.nodes)
 
-#     fill!(tmpNN,0)
-#     @inbounds for i in diagind(tmpNN)
-#         tmpNN[i] = 1
-#     end
-#     for lt in nodes[idx] + 1:nodes[idx + 1]
-#         @inbounds begin
-#             for i in 1:Ns
-#                 tmpN[i] =  cis( α *η[s[i, lt]])
-#             end
-#             mul!(tmpNN2,model.eK, tmpNN)
-#             mul!(tmpNN,Diagonal(tmpN), tmpNN2)
-#             # BM = Diagonal(D) * eK * BM
-#         end
-#     end
+    fill!(tmpNN,0)
+    @inbounds for i in diagind(tmpNN)
+        tmpNN[i] = 1
+    end
+    for lt in nodes[idx] + 1:nodes[idx + 1]
+        @inbounds begin
+            for i in 1:Ns
+                tmpN[i] =  cis( α *η[s[i, lt]])
+            end
+            mul!(tmpNN2,model.eK, tmpNN)
+            mul!(tmpNN,Diagonal(tmpN), tmpNN2)
+            # BM = Diagonal(D) * eK * BM
+        end
+    end
 
-#     return tmpNN
-# end
+    return tmpNN
+end
 
-# function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
-#     """
-#     不包头包尾
-#     """
-#     Ns=model.Ns
-#     nodes=model.nodes
-#     η=model.η
-#     α=model.α
+function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
+    """
+    不包头包尾
+    """
+    Ns=model.Ns
+    nodes=model.nodes
+    η=model.η
+    α=model.α
 
-#     @assert 0< idx <=length(model.nodes)
+    @assert 0< idx <=length(model.nodes)
     
-#     fill!(tmpNN,0)
-#     @inbounds for i in diagind(tmpNN)
-#         tmpNN[i] = 1
-#     end
+    fill!(tmpNN,0)
+    @inbounds for i in diagind(tmpNN)
+        tmpNN[i] = 1
+    end
 
-#     for lt in nodes[idx] + 1:nodes[idx + 1]
-#         @inbounds begin
-#             for i in 1:Ns
-#                 tmpN[i] =  cis( -α *η[s[i, lt]])
-#             end
-#             mul!(tmpNN2,tmpNN, model.eKinv)
-#             mul!(tmpNN,tmpNN2,Diagonal(tmpN))
-#         end
-#     end
+    for lt in nodes[idx] + 1:nodes[idx + 1]
+        @inbounds begin
+            for i in 1:Ns
+                tmpN[i] =  cis( -α *η[s[i, lt]])
+            end
+            mul!(tmpNN2,tmpNN, model.eKinv)
+            mul!(tmpNN,tmpNN2,Diagonal(tmpN))
+        end
+    end
 
-#     return tmpNN
-# end
+    return tmpNN
+end
 
-# function G4(nodes,idx,BLMs,BRMs,BMs,BMinvs)
-#     Ns=size(BMs,1)
-#     Gt=Matrix{ComplexF64}(undef, Ns, Ns)
-#     Gt0=Matrix{ComplexF64}(undef, Ns, Ns)
-#     G0=Matrix{ComplexF64}(undef, Ns, Ns)
-#     G0t=Matrix{ComplexF64}(undef, Ns, Ns)
+function G4(nodes,idx,BLMs,BRMs,BMs,BMinvs)
+    Ns=size(BMs,1)
+    Gt=Matrix{ComplexF64}(undef, Ns, Ns)
+    Gt0=Matrix{ComplexF64}(undef, Ns, Ns)
+    G0=Matrix{ComplexF64}(undef, Ns, Ns)
+    G0t=Matrix{ComplexF64}(undef, Ns, Ns)
 
-#     Θidx=div(length(nodes),2)+1
+    Θidx=div(length(nodes),2)+1
 
-#     mul!(tmpnn,view(BLMs,:,:,idx), view(BRMs,:,:,idx))
-#     LAPACK.getrf!(tmpnn,ipiv)
-#     LAPACK.getri!(tmpnn, ipiv)
-#     mul!(tmpNn,view(BRMs,:,:,idx), tmpnn)
-#     mul!(tmpNN, tmpNn, view(BLMs,:,:,idx))
-#     Gt .= II .- tmpNN
-#     # Gt=II-BRMs[:,:,idx] * inv( BLMs[:,:,idx] * BRMs[:,:,idx] ) * BLMs[:,:,idx]
+    mul!(tmpnn,view(BLMs,:,:,idx), view(BRMs,:,:,idx))
+    LAPACK.getrf!(tmpnn,ipiv)
+    LAPACK.getri!(tmpnn, ipiv)
+    mul!(tmpNn,view(BRMs,:,:,idx), tmpnn)
+    mul!(tmpNN, tmpNn, view(BLMs,:,:,idx))
+    Gt .= II .- tmpNN
+    # Gt=II-BRMs[:,:,idx] * inv( BLMs[:,:,idx] * BRMs[:,:,idx] ) * BLMs[:,:,idx]
     
-#     mul!(tmpnn,view(BLMs,:,:,Θidx), view(BRMs,:,:,Θidx))
-#     LAPACK.getrf!(tmpnn,ipiv)
-#     LAPACK.getri!(tmpnn, ipiv)
-#     mul!(tmpNn,view(BRMs,:,:,Θidx), tmpnn)
-#     mul!(tmpNN, tmpNn, view(BLMs,:,:,Θidx))
-#     G0 .= II .- tmpNN
-#     # G0=II-BRMs[:,:,Θidx] * inv( BLMs[:,:,Θidx] * BRMs[:,:,Θidx] ) * BLMs[:,:,Θidx]
+    mul!(tmpnn,view(BLMs,:,:,Θidx), view(BRMs,:,:,Θidx))
+    LAPACK.getrf!(tmpnn,ipiv)
+    LAPACK.getri!(tmpnn, ipiv)
+    mul!(tmpNn,view(BRMs,:,:,Θidx), tmpnn)
+    mul!(tmpNN, tmpNn, view(BLMs,:,:,Θidx))
+    G0 .= II .- tmpNN
+    # G0=II-BRMs[:,:,Θidx] * inv( BLMs[:,:,Θidx] * BRMs[:,:,Θidx] ) * BLMs[:,:,Θidx]
     
-#     Gt0 .= II
-#     G0t .= II
-#     if idx<Θidx
-#         for j in idx:Θidx-1
-#             if j==idx
-#                 tmpNN .= II .- Gt
-#             else
-#                 mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
-#                 LAPACK.getrf!(tmpnn,ipiv)
-#                 LAPACK.getri!(tmpnn, ipiv)
-#                 mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
-#                 mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
-#                 # tmpNN=BRMs[:,:,j] *inv(BLMs[:,:,j] * BRMs[:,:,j])*BLMs[:,:,j]
-#             end
-#             mul!(tmpNN2,Gt0, tmpNN)
-#             mul!(Gt0, tmpNN2, view(BMinvs,:,:,j))
-#             # Gt0= Gt0* tmpNN*BMinvs[:,:,j]
-#             tmpNN2 .= II .- tmpNN
-#             mul!(tmpNN,tmpNN2, G0t)
-#             mul!(G0t, view(BMs,:,:,j), tmpNN)
-#             # G0t= BMs[:,:,j]*(II-tmpNN) * G0t
-#         end
-#         lmul!(-1.0, Gt0)
-#     elseif idx>Θidx
-#         for j in Θidx:idx-1
-#             if j==Θidx
-#                 tmpNN .=II .- G0
-#             else
-#                 mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
-#                 LAPACK.getrf!(tmpnn,ipiv)
-#                 LAPACK.getri!(tmpnn, ipiv)
-#                 mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
-#                 mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
-#                 # tmp=BRMs[:,:,j]*inv(BLMs[:,:,j] * BRMs[:,:,j])* BLMs[:,:,j]
-#             end
-#             mul!(tmpNN2, G0t, tmpNN)
-#             mul!(G0t, tmpNN2,view(BMinvs,:,:,j))
-#             tmpNN2 .= II .- tmpNN
-#             mul!(tmpNN, tmpNN2, Gt0)
-#             mul!(Gt0, view(BMs,:,:,j), tmpNN)
-#             # G0t= G0t* tmp*BMinvs[j,:,:]
-#             # Gt0= BMs[j,:,:]*(II-tmp) * Gt0 
-#         end
+    Gt0 .= II
+    G0t .= II
+    if idx<Θidx
+        for j in idx:Θidx-1
+            if j==idx
+                tmpNN .= II .- Gt
+            else
+                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
+                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+                # tmpNN=BRMs[:,:,j] *inv(BLMs[:,:,j] * BRMs[:,:,j])*BLMs[:,:,j]
+            end
+            mul!(tmpNN2,Gt0, tmpNN)
+            mul!(Gt0, tmpNN2, view(BMinvs,:,:,j))
+            # Gt0= Gt0* tmpNN*BMinvs[:,:,j]
+            tmpNN2 .= II .- tmpNN
+            mul!(tmpNN,tmpNN2, G0t)
+            mul!(G0t, view(BMs,:,:,j), tmpNN)
+            # G0t= BMs[:,:,j]*(II-tmpNN) * G0t
+        end
+        lmul!(-1.0, Gt0)
+    elseif idx>Θidx
+        for j in Θidx:idx-1
+            if j==Θidx
+                tmpNN .=II .- G0
+            else
+                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+                LAPACK.getrf!(tmpnn,ipiv)
+                LAPACK.getri!(tmpnn, ipiv)
+                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+                # tmp=BRMs[:,:,j]*inv(BLMs[:,:,j] * BRMs[:,:,j])* BLMs[:,:,j]
+            end
+            mul!(tmpNN2, G0t, tmpNN)
+            mul!(G0t, tmpNN2,view(BMinvs,:,:,j))
+            tmpNN2 .= II .- tmpNN
+            mul!(tmpNN, tmpNN2, Gt0)
+            mul!(Gt0, view(BMs,:,:,j), tmpNN)
+            # G0t= G0t* tmp*BMinvs[j,:,:]
+            # Gt0= BMs[j,:,:]*(II-tmp) * Gt0 
+        end
 
 
-#         # for j in idx:-1:Θidx+1
-#             # if j==idx
-#             #     tmpNN .= II .- Gt
-#             # else
-#             #     mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
-#             #     LAPACK.getrf!(tmpnn,ipiv)
-#             #     LAPACK.getri!(tmpnn, ipiv)
-#             #     mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
-#             #     mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
-#             #     # tmp=BRMs[:,:,j]*inv(BLMs[:,:,j] * BRMs[:,:,j])* BLMs[:,:,j]
-#             # end
-#             # mul!(tmpNN2, tmpNN,G0t)
-#             # mul!(G0t, view(BMinvs,:,:,j-1),tmpNN2)
-#             # tmpNN2 .= II .- tmpNN
-#             # mul!(tmpNN,Gt0, view(BMs,:,:,j-1))
-#             # mul!(Gt0, tmpNN,tmpNN2)
-#             # # G0t= G0t* tmp*BMinvs[:,:,j]
-#             # # Gt0= BMs[:,:,j]*(II-tmp) * Gt0 
-#         lmul!(-1.0, G0t)
-#     else
-#         G0.=Gt
-#         Gt0.=Gt.-II
-#         G0t.=Gt
-#     end
-#     return Gt,G0,Gt0,G0t
-# end
+        # for j in idx:-1:Θidx+1
+            # if j==idx
+            #     tmpNN .= II .- Gt
+            # else
+            #     mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
+            #     LAPACK.getrf!(tmpnn,ipiv)
+            #     LAPACK.getri!(tmpnn, ipiv)
+            #     mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
+            #     mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
+            #     # tmp=BRMs[:,:,j]*inv(BLMs[:,:,j] * BRMs[:,:,j])* BLMs[:,:,j]
+            # end
+            # mul!(tmpNN2, tmpNN,G0t)
+            # mul!(G0t, view(BMinvs,:,:,j-1),tmpNN2)
+            # tmpNN2 .= II .- tmpNN
+            # mul!(tmpNN,Gt0, view(BMs,:,:,j-1))
+            # mul!(Gt0, tmpNN,tmpNN2)
+            # # G0t= G0t* tmp*BMinvs[:,:,j]
+            # # Gt0= BMs[:,:,j]*(II-tmp) * Gt0 
+        lmul!(-1.0, G0t)
+    else
+        G0.=Gt
+        Gt0.=Gt.-II
+        G0t.=Gt
+    end
+    return Gt,G0,Gt0,G0t
+end
 
 
-# function Gτ(nodes,lt,BLMs,BRMs)
-#     II=I(size(BLMs,3))
-#     idx=findfirst(nodes .== lt)
-#     if isnothing(idx)
-#         error("lt not in nodes")
-#     end
-#     G=II-BRMs[idx,:,:] * inv( BLMs[idx,:,:] * BRMs[idx,:,:] ) * BLMs[idx,:,:]
-#     return G
-# end
+function Gτ(nodes,lt,BLMs,BRMs)
+    II=I(size(BLMs,3))
+    idx=findfirst(nodes .== lt)
+    if isnothing(idx)
+        error("lt not in nodes")
+    end
+    G=II-BRMs[idx,:,:] * inv( BLMs[idx,:,:] * BRMs[idx,:,:] ) * BLMs[idx,:,:]
+    return G
+end
 
 
 
 
-# function Gτ_old(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
-#     """
-#     equal time Green function
-#     """
-#     BL::Array{ComplexF64,2}=model.Pt'[:,:]
-#     BR::Array{ComplexF64,2}=model.Pt[:,:]
+function Gτ_old(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
+    """
+    equal time Green function
+    """
+    BL::Array{ComplexF64,2}=model.Pt'[:,:]
+    BR::Array{ComplexF64,2}=model.Pt[:,:]
 
-#     counter=0
-#     for i in model.Nt:-1:τ+1
-#         D=[model.η[x] for x in s[:,i]]
-#         BL=BL*diagm(exp.(1im*model.α.*D))*model.eK
-#         counter+=1
-#         if counter==model.BatchSize
-#             counter=0
-#             BL=Matrix(qr(BL').Q)'
-#         end
-#     end
-#     counter=0
-#     for i in 1:1:τ
-#         D=[model.η[x] for x in s[:,i]]
-#         BR=diagm(exp.(1im*model.α.*D))*model.eK*BR
-#         counter+=1
-#         if counter==model.BatchSize
-#             counter=0
-#             BR=Matrix(qr(BR).Q)
-#         end
-#     end
+    counter=0
+    for i in model.Nt:-1:τ+1
+        D=[model.η[x] for x in s[:,i]]
+        BL=BL*diagm(exp.(1im*model.α.*D))*model.eK
+        counter+=1
+        if counter==model.BatchSize
+            counter=0
+            BL=Matrix(qr(BL').Q)'
+        end
+    end
+    counter=0
+    for i in 1:1:τ
+        D=[model.η[x] for x in s[:,i]]
+        BR=diagm(exp.(1im*model.α.*D))*model.eK*BR
+        counter+=1
+        if counter==model.BatchSize
+            counter=0
+            BR=Matrix(qr(BR).Q)
+        end
+    end
 
-#     BL=Matrix(qr(BL').Q)'
-#     BR=Matrix(qr(BR).Q)
+    BL=Matrix(qr(BL').Q)'
+    BR=Matrix(qr(BR).Q)
 
-#     return I(model.Ns)-BR*inv(BL*BR)*BL
-# end
+    return I(model.Ns)-BR*inv(BL*BR)*BL
+end
 
 
-# function G4_old(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
-#     """
-#     displaced Green function
-#     return:
-#         G(τ₁),G(τ₂),G(τ₁,τ₂),G(τ₂,τ₁)
-#     """
-#     if τ1>τ2
-#         BBs=zeros(ComplexF64,cld(τ1-τ2,model.BatchSize),model.Ns,model.Ns)
-#         BBsInv=zeros(ComplexF64,size(BBs))
+function G4_old(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
+    """
+    displaced Green function
+    return:
+        G(τ₁),G(τ₂),G(τ₁,τ₂),G(τ₂,τ₁)
+    """
+    if τ1>τ2
+        BBs=zeros(ComplexF64,cld(τ1-τ2,model.BatchSize),model.Ns,model.Ns)
+        BBsInv=zeros(ComplexF64,size(BBs))
         
-#         UL=zeros(ComplexF64,1+size(BBs)[1],div(model.Ns,2),model.Ns)
-#         UR=zeros(ComplexF64,size(UL)[1],model.Ns,div(model.Ns,2))
-#         G=zeros(ComplexF64,size(UL)[1],model.Ns,model.Ns)
+        UL=zeros(ComplexF64,1+size(BBs)[1],div(model.Ns,2),model.Ns)
+        UR=zeros(ComplexF64,size(UL)[1],model.Ns,div(model.Ns,2))
+        G=zeros(ComplexF64,size(UL)[1],model.Ns,model.Ns)
 
-#         UL[end,:,:]=model.Pt'[:,:]
-#         UR[1,:,:]=model.Pt[:,:]
+        UL[end,:,:]=model.Pt'[:,:]
+        UR[1,:,:]=model.Pt[:,:]
     
-#         counter=0
-#         for i in 1:τ2
-#             D=[model.η[x] for x in s[:,i]]
-#             UR[1,:,:]=diagm(exp.(1im*model.α.*D))*model.eK*UR[1,:,:]
-#             counter+=1
-#             if counter==model.BatchSize
-#                 counter=0
-#                 UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
-#             end
-#         end
-#         # UR[1,:,:]=UR[1,:,:]
-#         UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
+        counter=0
+        for i in 1:τ2
+            D=[model.η[x] for x in s[:,i]]
+            UR[1,:,:]=diagm(exp.(1im*model.α.*D))*model.eK*UR[1,:,:]
+            counter+=1
+            if counter==model.BatchSize
+                counter=0
+                UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
+            end
+        end
+        # UR[1,:,:]=UR[1,:,:]
+        UR[1,:,:]=Matrix(qr(UR[1,:,:]).Q)
     
-#         counter=0
-#         for i in model.Nt:-1:τ1+1
-#             D=[model.η[x] for x in s[:,i]]
-#             UL[end,:,:]=UL[end,:,:]*diagm(exp.(1im*model.α.*D))*model.eK
-#             counter+=1
-#             if counter==model.BatchSize
-#                 counter=0
-#                 UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
-#             end
-#         end
-#         # UL[end,:,:]=UL[end,:,:]
-#         UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
+        counter=0
+        for i in model.Nt:-1:τ1+1
+            D=[model.η[x] for x in s[:,i]]
+            UL[end,:,:]=UL[end,:,:]*diagm(exp.(1im*model.α.*D))*model.eK
+            counter+=1
+            if counter==model.BatchSize
+                counter=0
+                UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
+            end
+        end
+        # UL[end,:,:]=UL[end,:,:]
+        UL[end,:,:]=Matrix(qr(UL[end,:,:]').Q)'
     
-#         for i in 1:size(BBs)[1]-1
-#             BBs[i,:,:]=I(model.Ns)
-#             BBsInv[i,:,:]=I(model.Ns)
-#             for j in 1:model.BatchSize
-#                 D=[model.η[x] for x in s[:,τ2+(i-1)*model.BatchSize+j]]
-#                 BBs[i,:,:]=diagm(exp.(1im*model.α.*D))*model.eK*BBs[i,:,:]
-#                 BBsInv[i,:,:]=BBsInv[i,:,:]*model.eKinv*diagm(exp.(-1im*model.α.*D))
-#             end
-#         end
+        for i in 1:size(BBs)[1]-1
+            BBs[i,:,:]=I(model.Ns)
+            BBsInv[i,:,:]=I(model.Ns)
+            for j in 1:model.BatchSize
+                D=[model.η[x] for x in s[:,τ2+(i-1)*model.BatchSize+j]]
+                BBs[i,:,:]=diagm(exp.(1im*model.α.*D))*model.eK*BBs[i,:,:]
+                BBsInv[i,:,:]=BBsInv[i,:,:]*model.eKinv*diagm(exp.(-1im*model.α.*D))
+            end
+        end
     
-#         BBs[end,:,:]=I(model.Ns)
-#         BBsInv[end,:,:]=I(model.Ns)
-#         for j in τ2+(size(BBs)[1]-1)*model.BatchSize+1:τ1
-#             D=[model.η[x] for x in s[:,j]]
-#             BBs[end,:,:]=diagm(exp.(1im*model.α.*D))*model.eK*BBs[end,:,:]
-#             BBsInv[end,:,:]=BBsInv[end,:,:]*model.eKinv*diagm(exp.(-1im*model.α.*D))
-#         end
+        BBs[end,:,:]=I(model.Ns)
+        BBsInv[end,:,:]=I(model.Ns)
+        for j in τ2+(size(BBs)[1]-1)*model.BatchSize+1:τ1
+            D=[model.η[x] for x in s[:,j]]
+            BBs[end,:,:]=diagm(exp.(1im*model.α.*D))*model.eK*BBs[end,:,:]
+            BBsInv[end,:,:]=BBsInv[end,:,:]*model.eKinv*diagm(exp.(-1im*model.α.*D))
+        end
     
-#         for i in 1:size(BBs)[1]
-#             UL[end-i,:,:]=Matrix(qr( (UL[end-i+1,:,:]*BBs[end-i+1,:,:])' ).Q)'
-#             UR[i+1,:,:]=Matrix(qr(BBs[i,:,:]*UR[i,:,:]).Q)
-#         end
+        for i in 1:size(BBs)[1]
+            UL[end-i,:,:]=Matrix(qr( (UL[end-i+1,:,:]*BBs[end-i+1,:,:])' ).Q)'
+            UR[i+1,:,:]=Matrix(qr(BBs[i,:,:]*UR[i,:,:]).Q)
+        end
     
-#         for i in 1:size(G)[1]
-#             G[i,:,:]=I(model.Ns)-UR[i,:,:]*inv(UL[i,:,:]*UR[i,:,:])*UL[i,:,:]
-#             #####################################################################
-#             # if i <size(G)[1]
-#             #     if norm(Gτ(model,s,τ2+(i-1)*model.BatchSize)-G[i,:,:])>1e-3
-#             #         error("$i Gt")
-#             #     end
-#             # else
-#             #     if norm(Gτ(model,s,τ1)-G[i,:,:])>1e-3
-#             #         error("$i Gt")
-#             #     end
-#             # end
-#             #####################################################################
-#         end
+        for i in 1:size(G)[1]
+            G[i,:,:]=I(model.Ns)-UR[i,:,:]*inv(UL[i,:,:]*UR[i,:,:])*UL[i,:,:]
+            #####################################################################
+            # if i <size(G)[1]
+            #     if norm(Gτ(model,s,τ2+(i-1)*model.BatchSize)-G[i,:,:])>1e-3
+            #         error("$i Gt")
+            #     end
+            # else
+            #     if norm(Gτ(model,s,τ1)-G[i,:,:])>1e-3
+            #         error("$i Gt")
+            #     end
+            # end
+            #####################################################################
+        end
 
 
-#         G12=I(model.Ns)
-#         G21=-I(model.Ns)
-#         for i in 1:size(BBs)[1]
-#             G12=G12*BBs[end-i+1,:,:]*G[end-i,:,:]
-#             G21=G21*( I(model.Ns)-G[i,:,:] )*BBsInv[i,:,:]
-#         end
+        G12=I(model.Ns)
+        G21=-I(model.Ns)
+        for i in 1:size(BBs)[1]
+            G12=G12*BBs[end-i+1,:,:]*G[end-i,:,:]
+            G21=G21*( I(model.Ns)-G[i,:,:] )*BBsInv[i,:,:]
+        end
         
-#         return G[end,:,:],G[1,:,:],G12,G21
+        return G[end,:,:],G[1,:,:],G12,G21
     
-#     elseif τ1<τ2
-#         G2,G1,G21,G12=G4_old(model,s,τ2,τ1)
-#         return G1,G2,G12,G21
-#     else
-#         G=Gτ_old(model,s,τ1)
-#         return G,G,-(I(model.Ns)-G),G
+    elseif τ1<τ2
+        G2,G1,G21,G12=G4_old(model,s,τ2,τ1)
+        return G1,G2,G12,G21
+    else
+        G=Gτ_old(model,s,τ1)
+        return G,G,-(I(model.Ns)-G),G
     
-#     end
+    end
 
-# end
+end
 
 
 
-# function GroverMatrix(G1,G2)
-#     n = size(G1, 1)
-#     GM=Matrix{ComplexF64}(undef,n,n)
+function GroverMatrix(G1,G2)
+    n = size(G1, 1)
+    GM=Matrix{ComplexF64}(undef,n,n)
     
-#     mul!(GM,G1,G2)
-#     lmul!(2.0, GM)
-#     axpy!(-1.0, G1, GM)
-#     axpy!(-1.0, G2, GM)
-#     for i in diagind(GM)
-#         GM[i] += 1.0
-#     end
-#     return GM   
-#     # 2*G1*G2 - G1 - G2 + II
-# end
+    mul!(GM,G1,G2)
+    lmul!(2.0, GM)
+    axpy!(-1.0, G1, GM)
+    axpy!(-1.0, G2, GM)
+    for i in diagind(GM)
+        GM[i] += 1.0
+    end
+    return GM   
+    # 2*G1*G2 - G1 - G2 + II
+end
 
 
 

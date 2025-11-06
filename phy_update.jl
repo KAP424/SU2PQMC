@@ -112,7 +112,7 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 @fastmath r = 1 + Δ * (1 - G[x, x])
 
                 if rand(rng) < @fastmath model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    view(tmp1N,1, :) .= -view(G,x, :)
+                    view(tmp1N,1, :) .= .-view(G,x, :)
                     tmp1N[1, x] += 1
                     mul!(tmpNN, view(G, :, x), tmp1N)
                     axpy!(-Δ/r, tmpNN, G)
@@ -220,7 +220,7 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 @fastmath r = 1 + Δ * (1 - G[x, x])
 
                 if rand(rng) < @fastmath model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    view(tmp1N,1, :) .= -view(G,x, :)
+                    view(tmp1N,1, :) .= .-view(G,x, :)
                     tmp1N[1, x] += 1
                     mul!(tmpNN, view(G, :, x), tmp1N)
                     axpy!(-Δ/r, tmpNN, G)

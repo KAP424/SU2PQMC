@@ -16,7 +16,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         else error("Lattice: $(model.Lattice) is not allowed !") end    
     file="$(path)SCEEicr$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize).csv"
     
-    atexit() do
+    atexit() do 
         if record
             open(file, "a") do io
                 lock(io)
@@ -68,11 +68,10 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         samplers_dict[excluded] = Random.Sampler(rng, allowed)
     end
 
-    tmpO=0
+    tmpO=0.0
     counter=0
     O=zeros(Float64,Sweeps+1)
     O[1]=λ
-
 
     BMs1=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
     BMs2=Array{ComplexF64}(undef,model.Ns,model.Ns,NN-1)  # Number_of_BM*Ns*Ns
@@ -120,10 +119,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     end
     Θidx=div(NN,2)+1
 
-
     for loop in 1:Sweeps
         # println("\n ====== Sweep $loop / $Sweeps ======")
-
         for lt in 1:model.Nt
             if  any(model.nodes.==(lt-1)) 
                 # println("\n Wrap Time: $lt")
@@ -424,7 +421,6 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
             end
 
             ##------------------------------------------------------------------------
-
             tmpO+=(detg_A/detg_B)^(1/Nλ)
             counter+=1
             ##------------------------------------------------------------------------
@@ -755,7 +751,8 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         end
 
         O[loop+1]=tmpO/counter
-        tmpO=counter=0
+        tmpO=0.0
+        counter=0
     end
     return ss
 end

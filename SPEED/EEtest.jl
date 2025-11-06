@@ -4,6 +4,7 @@ using BenchmarkTools
 using KAPDQMC
 using LinearAlgebra
 using Random
+@allocated a=rand(1000,1000)
 
 function main()
     rng=MersenneTwister(1)
@@ -28,14 +29,13 @@ function main()
     λ=0.5
     Nλ=2
 
-    println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
-    # ctrl_SCEEicr(path,model,indexA,indexB,35,λ,Nλ,ss,true)
+    # println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
+    ctrl_SCEEicr(path,model,indexA,indexB,35,λ,Nλ,ss,true)
 end
 
 main()
 
 
-typeof(2)
 
 #------SCEEicr_PQMC-------#
 # U=3.8;     Δt=0.1;     Θ=3.0;   L=15;    Sweeps=1;

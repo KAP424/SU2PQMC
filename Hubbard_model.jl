@@ -33,7 +33,7 @@ function Hubbard_Para(t, U, Lattice::String, site, Δt, Θ, BatchSize, Initial::
     K = K_Matrix(Lattice, site)
     Ns = size(K, 1)
 
-    E, V = eigen(t * K)
+    E, V = LAPACK.syevd!('V', 'L',K[:,:])
     
     exp_neg_half = exp.(-Δt .* E ./ 2)
     exp_neg = exp.(-Δt .* E)
@@ -57,7 +57,7 @@ function Hubbard_Para(t, U, Lattice::String, site, Δt, Θ, BatchSize, Initial::
                 KK[i, i] += μ * (-1)^(x + y)
             end
         end
-        E, V = eigen(KK)
+        E, V = LAPACK.syevd!('V', 'L',KK)
         Pt .= V[:, 1:div(Ns, 2)]
     elseif Initial=="V" 
         if occursin("HoneyComb", Lattice)
