@@ -4,16 +4,15 @@ using BenchmarkTools
 using KAPDQMC
 using LinearAlgebra
 using Random
-@allocated a=rand(1000,1000)
 
 function main()
     rng=MersenneTwister(1)
 
     t=1;   Lattice="HoneyComb120"    
-    U=3.8;     Δt=0.1;     Θ=1.5;
+    U=3.8;     Δt=0.1;     Θ=3.0;
     BatchSize=10;
     Sweeps=1
-    L=6
+    L=15
     site=[L,L]
 
     model=Hubbard_Para(t,U,Lattice,site,Δt,Θ,BatchSize,"V")
@@ -29,13 +28,16 @@ function main()
     λ=0.5
     Nλ=2
 
-    # println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
-    ctrl_SCEEicr(path,model,indexA,indexB,35,λ,Nλ,ss,true)
+    println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
+    # ctrl_SCEEicr(path,model,indexA,indexB,1,λ,Nλ,ss,true)
 end
 
 main()
 
-
+# time = 163.9698069, bytes = 549133774, alloc = 2176314, gctime = 0.1244426)
+# time = 153.8645969, bytes = 249095242, alloc = 2053734, gctime = 0.000782)
+# time =  14.2534714, bytes = 168298175, alloc = 403, gctime = 0.0007381)
+# 188.140 s (2053734 allocations: 237.56 MiB)
 
 #------SCEEicr_PQMC-------#
 # U=3.8;     Δt=0.1;     Θ=3.0;   L=15;    Sweeps=1;
@@ -50,3 +52,17 @@ main()
 # update 8.909 s (2188951 allocations: 240.55 MiB)
 # update 8.779 s (2213106 allocations: 169.78 MiB)
 # 8.625 s (2176897 allocations: 167.88 MiB)
+
+using LinearAlgebra,LinearAlgebra.BLAS
+
+a=rand(2,1)+rand(2,1)*im
+b=rand(1,2)+rand(1,2)*im
+
+
+dotu(a,b)
+
+(b*a)[1,1]
+
+dotc(a,b)
+dotc(b,a)
+

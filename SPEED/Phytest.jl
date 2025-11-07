@@ -7,67 +7,13 @@ using Random
 rng=MersenneTwister(1)
 
 
-A = rand(1000, 1000)
-A.=A'.+A
-B = rand(1000, 1000)
-C = rand(1000, 1000)
-alpha = 1.0
-beta = 1.0
-
-@btime symm!($'L', $'U', $alpha, $A, $B, $beta, $C)
-# 8.043 ms (0 allocations: 0 bytes)
-
-@btime gemm!($'N', $'N', $alpha, $A, $B, $beta, $C)
-# 8.173 ms (0 allocations: 0 bytes)
-
-
-
-
-using LinearAlgebra
-
-A = rand(3, 3)  # 3x3 矩阵
-x = rand(3)     # 3x1 向量
-
-# 左乘：A * x
-lmul!(x, A)     # x 被就地更新为 A * x
-println(x)
-
-
-
-
-
-# 上三角矩阵
-alpha = 1.0
-
-@btime trmm!('L', 'U', 'N', 'N', $alpha, $A, $B)
-# 3.325 ms (0 allocations: 0 bytes)
-
-@btime gemm!($'N', $'N', $alpha, $A, $B, 0.0, copy($B))
-
-
-@allocated A=Symmetric(A)
-
-A=rand(ComplexF64,1000,1000)
-A=Hermitian(A)
-A=Diagonal(A)
-
-
-A=rand(1000,1000)
-
-
-transpose!(B,A)
-
-inv!(A)
-
-
-
-
-
 t=1;   Lattice="HoneyComb120"    
 U=3.8;     Δt=0.1;     Θ=3.0;
-BatchSize=1000;
+BatchSize=10;
 Sweeps=1
-L=15
+L=9
+
+
 
 #------------------phy_PQMC-------------------#
 # U=3.8;     Δt=0.1;     Θ=3.0;   L=15;       Sweeps=1;
@@ -103,5 +49,5 @@ model=Hubbard_Para(t,U,Lattice,site,Δt,Θ,BatchSize,"V")
 
 s=Initial_s(model,rng)
 path="C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/SPEED/"
-println(@btime phy_update($path,$model,1,0,$Initial_s(model,rng)))
-# phy_update(path,model,1,0,Initial_s(model,rng))
+# println(@btime phy_update($path,$model,1,0,$Initial_s(model,rng)))
+phy_update(path,model,1,0,Initial_s(model,rng))

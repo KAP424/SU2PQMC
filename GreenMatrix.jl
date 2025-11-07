@@ -1,139 +1,96 @@
 # 2d Trotter Decomposition
-function BM_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
+function BM_F!(tmpN,tmpNN,BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
     """
     不包头包尾
     """
-    Ns=model.Ns
-    nodes=model.nodes
-    η=model.η
-    α=model.α
     @assert 0< idx <=length(model.nodes)
-
-    tmpN = Vector{ComplexF64}(undef, Ns)
-    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
 
     fill!(BM,0)
     @inbounds for i in diagind(BM)
         BM[i] = 1
     end
-    for lt in nodes[idx] + 1:nodes[idx + 1]
-        @inbounds @simd for i in 1:Ns
-            tmpN[i] =  cis( α *η[s[i, lt]])
+    for lt in model.nodes[idx] + 1:model.nodes[idx + 1]
+        @inbounds @simd for i in 1:model.Ns
+            tmpN[i] =  cis( model.α *model.η[s[i, lt]])
         end
         mul!(tmpNN,model.eK, BM)
         mul!(BM,Diagonal(tmpN), tmpNN)
     end
 end
 
-function BMinv_F!(BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
+function BMinv_F!(tmpN,tmpNN,BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
     """
     不包头包尾
     """
-    Ns=model.Ns
-    nodes=model.nodes
-    η=model.η
-    α=model.α
     @assert 0< idx <=length(model.nodes)
-
-    tmpN = Vector{ComplexF64}(undef, Ns)
-    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
 
     fill!(BM,0)
     @inbounds for i in diagind(BM)
         BM[i] = 1
     end
 
-    for lt in nodes[idx] + 1:nodes[idx + 1]
-        @inbounds for i in 1:Ns
-            tmpN[i] =  cis( -α *η[s[i, lt]])
+    for lt in model.nodes[idx] + 1:model.nodes[idx + 1]
+        @inbounds for i in 1:model.Ns
+            tmpN[i] =  cis( -model.α *model.η[s[i, lt]])
         end
         mul!(tmpNN,BM, model.eKinv)
         mul!(BM,tmpNN,Diagonal(tmpN))
     end
 end
 
-function G4!(Gt::Array{ComplexF64, 2},G0::Array{ComplexF64, 2},Gt0::Array{ComplexF64, 2},G0t::Array{ComplexF64, 2},nodes::Vector{Int64},idx::Int64,BLMs::Array{ComplexF64,3},BRMs::Array{ComplexF64,3},BMs::Array{ComplexF64,3},BMinvs::Array{ComplexF64,3})
-    Ns=size(BLMs,2)
-    ns=size(BLMs,1)
-    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
-    tmpnn = Matrix{ComplexF64}(undef, ns, ns)
-    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
-    II=Diagonal(ones(ComplexF64,Ns))
-    tmpNN2 = Matrix{ComplexF64}(undef, Ns, Ns)
-    ipiv = Vector{LAPACK.BlasInt}(undef, ns)
-
+function G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt::Matrix{ComplexF64},G0::Matrix{ComplexF64},Gt0::Matrix{ComplexF64},G0t::Matrix{ComplexF64},nodes::Vector{Int64},idx::Int64,BLMs::Array{ComplexF64,3},BRMs::Array{ComplexF64,3},BMs::Array{ComplexF64,3},BMinvs::Array{ComplexF64,3},direction="Forward")
     Θidx=div(length(nodes),2)+1
 
-    mul!(tmpnn,view(BLMs,:,:,idx), view(BRMs,:,:,idx))
-    LAPACK.getrf!(tmpnn,ipiv)
-    LAPACK.getri!(tmpnn, ipiv)
-    mul!(tmpNn,view(BRMs,:,:,idx), tmpnn)
-    mul!(tmpNN, tmpNn, view(BLMs,:,:,idx))
-    Gt .= II .- tmpNN
+    get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,idx),view(BRMs,:,:,idx),Gt)
     
-    mul!(tmpnn,view(BLMs,:,:,Θidx), view(BRMs,:,:,Θidx))
-    LAPACK.getrf!(tmpnn,ipiv)
-    LAPACK.getri!(tmpnn, ipiv)
-    mul!(tmpNn,view(BRMs,:,:,Θidx), tmpnn)
-    mul!(tmpNN, tmpNn, view(BLMs,:,:,Θidx))
-    G0 .= II .- tmpNN
-    
-    Gt0 .= II
-    G0t .= II
-    if idx<Θidx
-        for j in idx:Θidx-1
-            if j==idx
-                tmpNN .= II .- Gt
-            else
-                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
-                LAPACK.getrf!(tmpnn,ipiv)
-                LAPACK.getri!(tmpnn, ipiv)
-                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
-                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
-            end
-            mul!(tmpNN2,Gt0, tmpNN)
-            mul!(Gt0, tmpNN2, view(BMinvs,:,:,j))
-            tmpNN2 .= II .- tmpNN
-            mul!(tmpNN,tmpNN2, G0t)
-            mul!(G0t, view(BMs,:,:,j), tmpNN)
+    if idx==Θidx
+        G0 .= Gt
+        if direction=="Forward"
+            Gt0.= Gt
+            G0t.= Gt .- II 
+        elseif direction=="Backward"
+            Gt0.= Gt .- II 
+            G0t.= Gt
         end
-        lmul!(-1.0, Gt0)
-    elseif idx>Θidx
-        for j in Θidx:idx-1
-            if j==Θidx
-                tmpNN .=II .- G0
-            else
-                mul!(tmpnn,view(BLMs,:,:,j), view(BRMs,:,:,j))
-                LAPACK.getrf!(tmpnn,ipiv)
-                LAPACK.getri!(tmpnn, ipiv)
-                mul!(tmpNn,view(BRMs,:,:,j), tmpnn)
-                mul!(tmpNN, tmpNn, view(BLMs,:,:,j))
-            end
-            mul!(tmpNN2, G0t, tmpNN)
-            mul!(G0t, tmpNN2,view(BMinvs,:,:,j))
-            tmpNN2 .= II .- tmpNN
-            mul!(tmpNN, tmpNN2, Gt0)
-            mul!(Gt0, view(BMs,:,:,j), tmpNN)
-        end
-        lmul!(-1.0, G0t)
     else
-        G0.=Gt
-        Gt0.=Gt.-II
-        G0t.=Gt
+        get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,Θidx),view(BRMs,:,:,Θidx),G0)
+    
+        Gt0 .= II
+        G0t .= II
+        if idx<Θidx
+            for j in idx:Θidx-1
+                if j==idx
+                    tmpNN2 .= Gt
+                else
+                    get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,j),view(BRMs,:,:,j),tmpNN2)
+                end
+                mul!(tmpNN,tmpNN2, G0t)
+                mul!(G0t, view(BMs,:,:,j), tmpNN)
+                tmpNN .= II .- tmpNN2
+                mul!(tmpNN2,Gt0, tmpNN)
+                mul!(Gt0, tmpNN2, view(BMinvs,:,:,j))
+                
+            end
+            lmul!(-1.0, Gt0)
+        else
+            for j in Θidx:idx-1
+                if j==Θidx
+                    tmpNN2 .= G0
+                else
+                    get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,j),view(BRMs,:,:,j),tmpNN2)
+                end
+                mul!(tmpNN, tmpNN2, Gt0)
+                mul!(Gt0, view(BMs,:,:,j), tmpNN)
+                tmpNN .= II .- tmpNN2
+                mul!(tmpNN2, G0t, tmpNN)
+                mul!(G0t, tmpNN2,view(BMinvs,:,:,j))
+            end
+            lmul!(-1.0, G0t)
+        end        
     end
 end
 
 function GroverMatrix!(GM::Matrix{ComplexF64},G1::SubArray{ComplexF64, 2, Matrix{ComplexF64}, Tuple{Vector{Int64}, Vector{Int64}}, false},G2::SubArray{ComplexF64, 2, Matrix{ComplexF64}, Tuple{Vector{Int64}, Vector{Int64}}, false})
-    mul!(GM,G1,G2)
-    lmul!(2.0, GM)
-    axpy!(-1.0, G1, GM)
-    axpy!(-1.0, G2, GM)
-    for i in diagind(GM)
-        GM[i] += 1.0
-    end
-end
-
-function GroverMatrix!(GM::Matrix{Float64},G1::SubArray{Float64, 2, Matrix{Float64}, Tuple{Vector{Int64}, Vector{Int64}}, false},G2::SubArray{Float64, 2, Matrix{Float64}, Tuple{Vector{Int64}, Vector{Int64}}, false})
     mul!(GM,G1,G2)
     lmul!(2.0, GM)
     axpy!(-1.0, G1, GM)
@@ -163,7 +120,7 @@ function Free_G!(G,Lattice,site,Θ,Initial)
     input:
         Lattice: "HoneyComb" or "SQUARE"
         site: [Int64,Int64]
-        Θ: Float64
+        Θ: ComplexF64
         Initial: "H0" or "V"
     return Green function with Free Hubbard Hamiltonian from H0 initial state or SDW initial state 
     对于得到H0初态(平衡态结果)
@@ -176,7 +133,7 @@ function Free_G!(G,Lattice,site,Θ,Initial)
     Δt=0.01
     Nt=Int(round(Θ/Δt))
 
-    Pt = zeros(Float64, Ns, div(Ns, 2))  # 预分配 Pt
+    Pt = zeros(ComplexF64, Ns, div(Ns, 2))  # 预分配 Pt
     if Initial=="H0"
         KK=K[:,:]
         μ=1e-5
@@ -210,12 +167,12 @@ function Free_G!(G,Lattice,site,Θ,Initial)
     E,V=LAPACK.syevd!('V', 'L',K[:,:])
     eK=V*Diagonal(exp.(-Δt.*E))*V'
 
-    BL = Array{Float64}(undef, ns, Ns)
-    BR = Array{Float64}(undef, Ns, ns)
-    tmpNn = Matrix{Float64}(undef, Ns, ns)
-    tmpnN = Matrix{Float64}(undef, ns, Ns)
-    tmpnn= Matrix{Float64}(undef, ns, ns)
-    tau = Vector{Float64}(undef, ns)
+    BL = Array{ComplexF64}(undef, ns, Ns)
+    BR = Array{ComplexF64}(undef, Ns, ns)
+    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
+    tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
+    tmpnn= Matrix{ComplexF64}(undef, ns, ns)
+    tau = Vector{ComplexF64}(undef, ns)
     ipiv = Vector{LAPACK.BlasInt}(undef, ns)
 
     BL.=Pt'
@@ -255,7 +212,7 @@ end
 
 #######################################################################################################################################
 
-function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
+function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Matrix{ComplexF64}
     """
     不包头包尾
     """
@@ -284,7 +241,7 @@ function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{Compl
     return tmpNN
 end
 
-function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Array{ComplexF64, 2}
+function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Matrix{ComplexF64}
     """
     不包头包尾
     """

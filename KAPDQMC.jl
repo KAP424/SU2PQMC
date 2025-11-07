@@ -4,8 +4,7 @@ module KAPDQMC
     using DelimitedFiles
     using Random
     using Statistics
-    using MKL
-    using LinearAlgebra.LAPACK
+    using LinearAlgebra.LAPACK,LinearAlgebra.BLAS
 
     include("Geometry.jl")
     export K_Matrix,xy_i,i_xy,area_index

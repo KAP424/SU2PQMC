@@ -24,7 +24,6 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     mA = mB = nn = R0 = R1 = Ek = C0 = Cmax = 0.0
     counter = 0
 
-    II = Diagonal(ones(ComplexF64,Ns))
     G = Matrix{ComplexF64}(undef ,Ns, Ns)
 
     # 预分配 BL 和 BR
@@ -34,77 +33,40 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
     # 预分配临时数组
     tmpN = Vector{ComplexF64}(undef, Ns)
     tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
-    DD = Diagonal(tmpN)
     BM = Matrix{ComplexF64}(undef, Ns, Ns)
     tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
     tmpnn = Matrix{ComplexF64}(undef, ns, ns)
     tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
     tmp1N = Matrix{ComplexF64}(undef, 1, Ns)
 
-    view(BRs,:,:,1) .= model.Pt
-    view(BLs,:,:,NN) .= model.Pt'
-    for idx in NN-1:-1:2
-        BM_F!(BM,model, s, idx)
+    copyto!(view(BRs,:,:,1) , model.Pt)
+    transpose!(view(BLs,:,:,NN) , model.Pt)
+    for idx in NN-1:-1:1
+        BM_F!(tmpN,tmpNN,BM,model, s, idx)
         mul!(tmpnN,view(BLs,:,:,idx+1), BM)
         LAPACK.gerqf!(tmpnN, tau)
-        LAPACK.orgqr!(tmpnN, tau, ns)
-        view(BLs,:,:,idx) .= tmpnN
+        LAPACK.orgrq!(tmpnN, tau, ns)
+        copyto!(view(BLs,:,:,idx) , tmpnN)
         # view(BLs,:,:,idx) .= Matrix(qr!(tmpNn).Q)'
     end
     
+    idx=1
+    get_G!(tmpnn,tmpNn,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
     for loop in 1:(Sweeps + WarmSweeps)
         # println("\n Sweep: $loop ")
-        
-        BM_F!(BM,model, s, 1)
-        mul!(tmpnN,view(BLs,:,:,2), BM)
-        LAPACK.gerqf!(tmpnN, tau)
-        LAPACK.orgrq!(tmpnN, tau, ns)
-        view(BLs,:,:,1) .= tmpnN
-        
-        mul!(tmpnn, view(BLs,:,:,1), view(BRs,:,:,1))
-        LAPACK.getrf!(tmpnn,ipiv)
-        LAPACK.getri!(tmpnn, ipiv)
-        mul!(tmpNn, view(BRs,:,:,1), tmpnn)
-        mul!(tmpNN, tmpNn, view(BLs,:,:,1))
-        @fastmath G .= II .- tmpNN
-        #####################################################################
-        # if norm(G-Gτ_old(model,s,0))>1e-6 
-        #     error("00000"," Wrap error:  ",norm(G-Gτ_old(model,s,0)))
-        # end
-        #####################################################################
-        idx=1
         for lt in 1:model.Nt
-            if any(model.nodes[2:end] .== (lt - 1))
-                idx+=1
-                BM_F!(BM,model, s, idx - 1)
-                mul!(tmpNn, BM, view(BRs,:,:,idx-1))
-                LAPACK.geqrf!(tmpNn, tau)
-                LAPACK.orgqr!(tmpNn, tau, ns)
-                view(BRs,:,:,idx) .= tmpNn
-                # BR .= Matrix(qr((BM * BR)).Q)
-                mul!(tmpnn, view(BLs,:,:,idx), view(BRs,:,:,idx))
-                LAPACK.getrf!(tmpnn,ipiv)
-                LAPACK.getri!(tmpnn, ipiv)
-                mul!(tmpNn, view(BRs,:,:,idx), tmpnn)
-                mul!(tmpNN, tmpNn, view(BLs,:,:,idx))
-                @fastmath G .= II .- tmpNN
-            end
-            s_col = view(model.η,view(s, :, lt))
-            @inbounds @simd for iii in 1:Ns
-                tmpN[iii] =@fastmath cis( model.α *s_col[iii] ) 
-            end
-            mul!(tmpNN, model.eK, G)
-            mul!(G,tmpNN,model.eKinv)
-            DD.diag .= tmpN
-            mul!(tmpNN,DD,G)
-            conj!(DD)
-            mul!(G,tmpNN,DD)
-            # G= Diagonal(tmp_D) * model.eK * G * model.eKinv * Diagonal(conj(tmp_D))
             #####################################################################
-            # if norm(G-Gτ_old(model,s,lt))>1e-6 
-            #     error(lt,"Wrap error:  ",norm(G-Gτ_old(model,s,lt)))
+            # # println("lt=",lt-1)
+            # if norm(G-Gτ_old(model,s,lt-1))>1e-6 
+            #     error(lt-1,"Wrap error:  ",norm(G-Gτ_old(model,s,lt-1)))
             # end
             #####################################################################
+
+            @inbounds @simd for iii in 1:Ns
+                tmpN[iii] =@fastmath cis( model.α *model.η[s[iii,lt]] ) 
+            end
+            WrapKV!(tmpNN,model.eK,model.eKinv,tmpN,G,"Forward", "B")
+            # G= Diagonal(tmp_D) * model.eK * G * model.eKinv * Diagonal(conj(tmp_D))
 
             @inbounds @simd for x in 1:Ns
                 sx = rand(rng,  samplers_dict[s[x, lt]])
@@ -112,10 +74,8 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 @fastmath r = 1 + Δ * (1 - G[x, x])
 
                 if rand(rng) < @fastmath model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    view(tmp1N,1, :) .= .-view(G,x, :)
-                    tmp1N[1, x] += 1
-                    mul!(tmpNN, view(G, :, x), tmp1N)
-                    axpy!(-Δ/r, tmpNN, G)
+                    r=Δ / r
+                    Gupdate!(tmpNN, tmp1N, x, r, G)
                     s[x, lt] = sx
                     ####################################################################
                     # if norm(G-Gτ_old(model,s,lt))>1e-6
@@ -124,89 +84,31 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                     #####################################################################
                 end
             end
-
             # ---------------------------------------------------------------------------------------------------------
-            # if loop > WarmSweeps && abs(lt - model.Nt / 2) <= model.BatchSize
-            #     @views tmpNN .= G
-            #     if lt > model.Nt / 2
-            #         for i in lt:-1:(div(model.Nt, 2) + 1)
-            #             for iii in 1:Ns
-            #                 tmp_D[iii] = cis( model.α *model.η[s[iii, i]] ) 
-            #             end
-
-            #             tmp_G0= model.eKinv * Diagonal(conj(tmp_D))* tmp_G0 *Diagonal(tmp_D) * model.eK
-            
-            #         end
-            #     else
-            #         for i in (lt + 1):div(model.Nt, 2)
-            #             for iii in 1:Ns
-            #                 tmp_D[iii] = cis( model.α *model.η[s[iii, i]] )
-            #             end
-            #             tmp_G0= Diagonal(tmp_D) * model.eK * tmp_G0 * model.eKinv * Diagonal(conj(tmp_D))
-            #         end
-            #     end
-
-            #     @views tmp_G0 .= model.HalfeK * tmp_G0 * model.HalfeKinv
-
-            #     tmp = Magnetism(model, tmp_G0)
-            #     mA += tmp[1]
-            #     mB += tmp[2]
-            #     nn += NN(model, tmp_G0)
-            #     Ek += EK(model, tmp_G0)
-            #     tmp = CzzofSpin(model, tmp_G0)
-            #     R0 += tmp[1]
-            #     R1 += tmp[2]
-            #     C0 += tmp[3]
-            #     Cmax += tmp[4]
-            #     counter += 1
-            # end
+            # record physical quantities
             # ---------------------------------------------------------------------------------------------------------
+    
+            if any(model.nodes .== lt )
+                idx+=1
+                BM_F!(tmpN,tmpNN,BM,model, s, idx - 1)
+                mul!(tmpNn, BM, view(BRs,:,:,idx-1))
+                LAPACK.geqrf!(tmpNn, tau)
+                LAPACK.orgqr!(tmpNn, tau, ns)
+                copyto!(view(BRs,:,:,idx) , tmpNn)
 
+                copyto!(tmpNN , G)
+
+                get_G!(tmpnn,tmpNn,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
+                #####################################################################
+                axpy!(-1.0, G, tmpNN)  
+                if norm(tmpNN)>1e-8
+                    println("Warning for Batchsize Wrap Error : $(norm(tmpNN))")
+                end
+                #####################################################################
+            end
         end
 
-        BM_F!(BM,model, s, NN-1)
-        mul!(tmpNn , BM, view(BRs,:,:,NN-1))
-        LAPACK.geqrf!(tmpNn, tau)
-        LAPACK.orgqr!(tmpNn, tau, ns)
-        view(BRs,:,:,NN) .= tmpNn
-
-        mul!(tmpnn, view(BLs,:,:,NN), view(BRs,:,:,NN))
-        LAPACK.getrf!(tmpnn,ipiv)
-        LAPACK.getri!(tmpnn, ipiv)
-        mul!(tmpNn, view(BRs,:,:,NN), tmpnn)
-        mul!(tmpNN, tmpNn, view(BLs,:,:,NN))
-        @fastmath G .= II .- tmpNN
-
-        for lt in model.Nt-1:-1:1
-            if any(model.nodes.== lt)
-                BM_F!(BM,model, s, idx)
-                mul!(tmpnN,view(BLs,:,:,idx+1),BM)
-                LAPACK.gerqf!(tmpnN, tau)
-                LAPACK.orgrq!(tmpnN, tau, ns)
-                view(BLs,:,:,idx).=tmpnN
-                # BL .= Matrix(qr(( BL * BM )').Q)'
-
-                mul!(tmpnn, view(BLs,:,:,idx), view(BRs,:,:,idx))
-                LAPACK.getrf!(tmpnn,ipiv)
-                LAPACK.getri!(tmpnn, ipiv)
-                mul!(tmpNn, view(BRs,:,:,idx), tmpnn)
-                mul!(tmpNN, tmpNn, view(BLs,:,:,idx))
-                @fastmath G .= II .- tmpNN
-
-                idx-=1
-            else
-                s_col = view(model.η,view(s, :, lt+1))
-                @inbounds @simd for iii in 1:Ns
-                    tmpN[iii] =@fastmath cis( model.α *s_col[iii] ) 
-                end
-                DD.diag .= tmpN
-                mul!(tmpNN,G,DD)
-                conj!(DD)
-                mul!(G, DD , tmpNN)
-                mul!(tmpNN,model.eKinv,G)
-                mul!(G,tmpNN,model.eK)
-                # G= model.eKinv * Diagonal(conj(tmp_D)) * G * Diagonal(tmp_D) * model.eK
-            end
+        for lt in model.Nt:-1:1
             #####################################################################
             # print("-")
             # if norm(G-Gτ_old(model,s,lt))>1e-6 
@@ -220,10 +122,8 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                 @fastmath r = 1 + Δ * (1 - G[x, x])
 
                 if rand(rng) < @fastmath model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    view(tmp1N,1, :) .= .-view(G,x, :)
-                    tmp1N[1, x] += 1
-                    mul!(tmpNN, view(G, :, x), tmp1N)
-                    axpy!(-Δ/r, tmpNN, G)
+                    r=Δ / r
+                    Gupdate!(tmpNN, tmp1N, x, r, G)
                     s[x, lt] = sx
                     ####################################################################
                     # if norm(G-Gτ_old(model,s,lt))>1e-6
@@ -232,14 +132,25 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
                     #####################################################################
                 end
             end
-
             # ---------------------------------------------------------------------------------------------------------
-
-
-
-
+            # record physical quantities
             # ---------------------------------------------------------------------------------------------------------
+            @inbounds @simd for iii in 1:Ns
+                tmpN[iii] =@fastmath cis(-model.α *model.η[s[iii,lt]] ) 
+            end
+            WrapKV!(tmpNN,model.eK,model.eKinv,tmpN,G,"Backward", "B")
+            
+            if any(model.nodes.== (lt-1))
+                # println("idx=",idx," lt=",lt-1)
+                idx-=1
+                BM_F!(tmpN,tmpNN,BM,model, s, idx)
+                mul!(tmpnN,view(BLs,:,:,idx+1),BM)
+                LAPACK.gerqf!(tmpnN, tau)
+                LAPACK.orgrq!(tmpnN, tau, ns)
+                copyto!(view(BLs,:,:,idx),tmpnN)
 
+                get_G!(tmpnn,tmpNn,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
+            end
         end
 
         if loop > WarmSweeps
@@ -251,6 +162,62 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
         end
     end
     return s
+end
+
+"""
+    No Return. Overwrite G 
+        G = I - BR ⋅ inv(BL ⋅ BR) ⋅ BL 
+    ------------------------------------------------------------------------------
+"""
+function get_G!(tmpnn,tmpNn,ipiv,BL,BR,G)
+    mul!(tmpnn, BL,BR)
+    LAPACK.getrf!(tmpnn,ipiv)
+    LAPACK.getri!(tmpnn, ipiv)
+    mul!(tmpNn, BR, tmpnn)
+    mul!(G, tmpNn, BL)
+    lmul!(-1.0,G)
+    for i in diagind(G)
+        G[i]+=1
+    end
+end
+
+function WrapKV!(tmpNN,eK,eKinv,D,G,direction,LR)
+    if direction=="Forward"
+        if LR=="L"
+            mul!(tmpNN, eK, G)
+            mul!(G,Diagonal(D),tmpNN)
+        elseif LR=="R"
+            mul!(tmpNN, G,eKinv)
+            mul!(G,tmpNN , Diagonal(D))
+        elseif LR=="B"
+            mul!(tmpNN, eK, G)
+            mul!(G,tmpNN,eKinv)
+            mul!(tmpNN,Diagonal(D),G)
+            conj!(D)
+            mul!(G,tmpNN,Diagonal(D))
+        end
+    elseif direction=="Backward"
+        if LR=="L"
+            mul!(tmpNN,Diagonal(D),G)
+            mul!(G, eKinv, tmpNN)
+        elseif LR=="R"
+            mul!(tmpNN,G,Diagonal(D))
+            mul!(G, tmpNN,eK)
+        elseif LR=="B"
+            mul!(tmpNN,Diagonal(D),G)
+            conj!(D)
+            mul!(G,tmpNN,Diagonal(D))
+            mul!(tmpNN, eKinv, G)
+            mul!(G,tmpNN,eK)
+        end
+    end
+end
+
+function Gupdate!(tmpNN::Matrix{ComplexF64},tmp1N::Matrix{ComplexF64},x::Int64,r::ComplexF64,G::Matrix{ComplexF64})
+    view(tmp1N,1, :) .= .-view(G,x, :)
+    tmp1N[1, x] += 1
+    mul!(tmpNN, view(G, :, x), tmp1N)
+    axpy!(-r, tmpNN, G)
 end
 
 
