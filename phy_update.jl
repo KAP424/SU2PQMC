@@ -154,7 +154,7 @@ function phy_update(path::String, model::_Hubbard_Para, WarmSweeps::Int64, Sweep
         end
 
         if loop > WarmSweeps
-            fid = open("$(path)Phy$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)BS$(model.BatchSize).csv", "a+")
+            fid = open("$(path)/Phy$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)BS$(model.BatchSize).csv", "a+")
             writedlm(fid, [Ek model.U * nn nn mA mB R0 R1 C0 Cmax] / counter, ',')
             close(fid)
             mA = mB = nn = R0 = R1 = Ek = C0 = Cmax = 0
