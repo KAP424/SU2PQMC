@@ -72,7 +72,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
     
     tmpO=0.0
     counter=0
-    O=zeros(ComplexF64,Sweeps+1)
+    O=zeros(Float64,Sweeps+1)
     O[1]=λ
 
     BMs1=Array{ComplexF64}(undef,Ns,Ns,NN-1)  # Number_of_BM*Ns*Ns

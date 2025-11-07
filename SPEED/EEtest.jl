@@ -12,7 +12,7 @@ function main()
     U=3.8;     Δt=0.1;     Θ=3.0;
     BatchSize=10;
     Sweeps=1
-    L=15
+    L=6
     site=[L,L]
 
     model=Hubbard_Para(t,U,Lattice,site,Δt,Θ,BatchSize,"V")
