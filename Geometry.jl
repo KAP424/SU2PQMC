@@ -10,7 +10,7 @@ function nn2idx(Lattice::String,site::Vector{Int64},idx::Int64)
             nn[3]=xy_i(Lattice,site,mod1(x,site[1]),mod1(y+1,site[2]))
             nn[4]=xy_i(Lattice,site,mod1(x,site[1]),mod1(y-1,site[2]))
         else
-            nn=[mod1(idx-1,site[1]),mod1(idx+1,site[1])]
+            nn=[location[1]-1,location[1]+1]
         end
 
     elseif  Lattice=="HoneyComb120"
@@ -29,21 +29,22 @@ function nn2idx(Lattice::String,site::Vector{Int64},idx::Int64)
         end
 
     elseif  Lattice=="HoneyComb60"
-            nn=zeros(Int,3)
-            x,y=i_xy(Lattice,site,idx)
-    
-            if mod(idx,2)==1
-                nn[1]=idx+1
-                nn[2]=xy_i(Lattice,site,mod1(x+1,site[1]),mod1(y-1,site[2]))
-                nn[3]=xy_i(Lattice,site,x,mod1(y-1,site[2]))
-    
-            else
-                nn[1]=idx-1
-                nn[2]=xy_i(Lattice,site,x,mod1(y+1,site[2]))-1
-                nn[3]=xy_i(Lattice,site,mod1(x-1,site[1]), mod1(y+1,site[2]))-1
-            end
-        end
+        nn=zeros(Int,3)
+        x,y=i_xy(Lattice,site,idx)
 
+        if mod(idx,2)==1
+            nn[1]=idx+1
+            nn[2]=xy_i(Lattice,site,mod1(x+1,site[1]),mod1(y-1,site[2]))
+            nn[3]=xy_i(Lattice,site,x,mod1(y-1,site[2]))
+
+        else
+            nn[1]=idx-1
+            nn[2]=xy_i(Lattice,site,x,mod1(y+1,site[2]))-1
+            nn[3]=xy_i(Lattice,site,mod1(x-1,site[1]), mod1(y+1,site[2]))-1
+        end
+    else    
+        error("Lattice: $(Lattice) is not allowed !")
+    end
     return nn
 end
 

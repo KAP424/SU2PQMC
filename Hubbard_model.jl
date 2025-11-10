@@ -1,6 +1,5 @@
 # using SU(2) ±1,±2 HS transformation
-
-mutable struct _Hubbard_Para
+struct _Hubbard_Para
     Lattice::String
     t::Float64
     U::Float64
@@ -20,66 +19,74 @@ mutable struct _Hubbard_Para
     eK::Array{Float64,2}
     HalfeKinv::Array{Float64,2}
     eKinv::Array{Float64,2}
+    nodes::Vector{Int64}
 end
 
-function Hubbard_Para(t,U,Lattice::String,site,Δt,Θ,BatchSize,Initial::String)
-    Nt::Int64=2*cld(Θ,Δt)
-    WrapTime::Int64=div(BatchSize,2)
+function Hubbard_Para(t, U, Lattice::String, site, Δt, Θ, BatchSize, Initial::String)
+    Nt = 2 * cld(Θ, Δt)
+    WrapTime = div(BatchSize, 2)
     
-    α::Float64=sqrt(Δt*U/2)
-    γ::Vector{Float64}=[1+sqrt(6)/3,1+sqrt(6)/3,1-sqrt(6)/3,1-sqrt(6)/3]
-    η::Vector{Float64}=[sqrt(2*(3-sqrt(6))),-sqrt(2*(3-sqrt(6))),sqrt(2*(3+sqrt(6))),-sqrt(2*(3+sqrt(6)))]
+    α = sqrt(Δt * U / 2)
+    γ = [1 + sqrt(6) / 3, 1 + sqrt(6) / 3, 1 - sqrt(6) / 3, 1 - sqrt(6) / 3]
+    η = [sqrt(2 * (3 - sqrt(6))), -sqrt(2 * (3 - sqrt(6))), sqrt(2 * (3 + sqrt(6))), -sqrt(2 * (3 + sqrt(6)))]
     
-    K::Array{Float64,2}=K_Matrix(Lattice,site)
-    Ns::Int64=size(K)[1]
+    K = K_Matrix(Lattice, site)
+    Ns = size(K, 1)
 
-    E,V=eigen(t*K)
+    E, V = LAPACK.syevd!('V', 'L',K[:,:])
     
-    HalfeK=V*diagm(exp.(-Δt.*E./2))*V'
-    eK=V*diagm(exp.(-Δt.*E))*V'
-    HalfeKinv=V*diagm(exp.(Δt.*E./2))*V'
-    eKinv=V*diagm(exp.(Δt.*E))*V'
+    exp_neg_half = exp.(-Δt .* E ./ 2)
+    exp_neg = exp.(-Δt .* E)
+    exp_pos_half = exp.(Δt .* E ./ 2)
+    exp_pos = exp.(Δt .* E)
 
-    if Initial=="H0"
-        # 交错化学势，打开gap，去兼并
-        KK=K[:,:]
-        μ=1e-4
+    HalfeK = V * diagm(exp_neg_half) * V'
+    eK = V * diagm(exp_neg) * V'
+    HalfeKinv = V * diagm(exp_pos_half) * V'
+    eKinv = V * diagm(exp_pos) * V'
+
+    Pt = zeros(Float64, Ns, div(Ns, 2))  # 预分配 Pt
+    if Initial == "H0"
+        KK = copy(K)
+        μ = 1e-5
         if occursin("HoneyComb", Lattice)
-            KK+=μ*diagm(repeat([-1, 1], div(Ns, 2)))
-        elseif Lattice=="SQUARE"
+            KK .+= μ * diagm(repeat([-1, 1], div(Ns, 2)))
+        elseif Lattice == "SQUARE"
             for i in 1:Ns
-                x,y=i_xy(Lattice,site,i)
-                KK[i,i]+=μ*(-1)^(x+y)
+                x, y = i_xy(Lattice, site, i)
+                KK[i, i] += μ * (-1)^(x + y)
             end
         end
-        E,V=eigen(KK)
-        Pt=V[:,1:div(Ns,2)]
-        # K[K .!= 0] .+=( rand(size(K)...) * 0.1)[K.!= 0]
-        # K=(K+K')./2
+        E, V = LAPACK.syevd!('V', 'L',KK)
+        Pt .= V[:, 1:div(Ns, 2)]
     elseif Initial=="V" 
-        Pt=zeros(Float64,Ns,Int(Ns/2))
-        for i in 1:Int(Ns/2)
-            Pt[i*2,i]=1
+        if occursin("HoneyComb", Lattice)
+            for i in 1:div(Ns,2)
+                Pt[i*2,i]=1
+            end
+        else
+            count=1
+            for i in 1:Ns
+                x,y=i_xy(Lattice,site,i)
+                if (x+y)%2==1
+                    Pt[i,count]=1
+                    count+=1
+                end
+            end
         end
     end
+    
+    if div(Nt, 2) % BatchSize == 0
+        nodes = collect(0:BatchSize:Nt)
+    else
+        nodes = vcat(0, reverse(collect(div(Nt, 2) - BatchSize:-BatchSize:1)), collect(div(Nt, 2):BatchSize:Nt), Nt)
+    end
 
-    return _Hubbard_Para(Lattice,t,U,site,Θ,Ns,Nt,K,BatchSize,WrapTime,Δt,α,γ,η,Pt,HalfeK,eK,HalfeKinv,eKinv)
-
+    return _Hubbard_Para(Lattice, t, U, site, Θ, Ns, Nt, K, BatchSize, WrapTime, Δt, α, γ, η, Pt, HalfeK, eK, HalfeKinv, eKinv, nodes)
 end
 
-
-function setμ(model::_Hubbard_Para,μ)
-    # fig1:1d
-    # km=abs(acos(μ/2))
-    # N_particle=Int(round(km/π*model.Ns))
-    
-    # fig2:2d-circle Fermi surface
-    N_particle=Int(round( μ^2/4/π *model.Ns ))
-    
-    E,V=eigen(model.K)
-    model.Pt=V[:,1:N_particle]
+function setμ(model::_Hubbard_Para, μ)
+    N_particle = Int(round(μ^2 / (4 * π) * model.Ns))
+    E, V = eigen(model.K)
+    model.Pt .= V[:, 1:N_particle]
 end
-
-# function setNN_hopping(t)
-    
-# end

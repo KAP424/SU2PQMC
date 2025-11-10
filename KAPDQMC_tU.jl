@@ -1,9 +1,10 @@
-module KAPDQMC
+module KAPDQMC_tU
     using Base.Filesystem
     using LinearAlgebra
     using DelimitedFiles
     using Random
     using Statistics
+    using LinearAlgebra.LAPACK,LinearAlgebra.BLAS
 
     include("Geometry.jl")
     export K_Matrix,xy_i,i_xy,area_index
@@ -12,7 +13,8 @@ module KAPDQMC
     export Hubbard_Para,_Hubbard_Para,setμ
 
     include("GreenMatrix.jl")
-    export Gτ,G4,Initial_s,G12FF,GroverMatrix,Free_G
+    export BM_F!,BMinv_F!,G4!,GroverMatrix!,Initial_s,Free_G!
+    # export Gτ,G4,Initial_s,G12FF,GroverMatrix,Free_G!,BM_F,BMinv_F,Gτ_old,G4_old
 
     include("phy_measure.jl")
     export EK,NN,Magnetism,CzzofSpin
