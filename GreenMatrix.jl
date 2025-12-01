@@ -136,7 +136,7 @@ function Free_G!(G,Lattice,site,Θ,Initial)
     Pt = zeros(ComplexF64, Ns, div(Ns, 2))  # 预分配 Pt
     if Initial=="H0"
         KK=K[:,:]
-        μ=1e-5
+        μ=1e-1
         if occursin("HoneyComb", Lattice)
             KK+=μ*Diagonal(repeat([-1, 1], div(Ns, 2)))
         elseif Lattice=="SQUARE"
@@ -379,8 +379,6 @@ function Gτ(nodes,lt,BLMs,BRMs)
 end
 
 
-
-
 function Gτ_old(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
     """
     equal time Green function
@@ -517,7 +515,6 @@ function G4_old(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
     end
 
 end
-
 
 
 function GroverMatrix(G1,G2)
