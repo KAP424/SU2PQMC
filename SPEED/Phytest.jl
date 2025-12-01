@@ -1,19 +1,26 @@
 push!(LOAD_PATH,"C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/")
 using DelimitedFiles
 using BenchmarkTools
-using KAPDQMC
+using KAPDQMC_tU
 using LinearAlgebra,LinearAlgebra.BLAS
 using Random 
 rng=MersenneTwister(1)
 
 
 t=1;   Lattice="HoneyComb120"    
-U=3.8;     Δt=0.1;     Θ=3.0;
-BatchSize=10;
-Sweeps=1
-L=9
+U=2;     Δt=0.05;     Θ=1.25;
+BatchSize=5;
+Sweeps=140
+L=6
 
+site=[L,L]
 
+model=Hubbard_Para(t,U,Lattice,site,Δt,Θ,BatchSize,"V")
+
+s=Initial_s(model,rng)
+path="C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/SPEED/"
+# println(@btime phy_update($path,$model,1,0,$Initial_s(model,rng)))
+phy_update(path,model,Sweeps,Initial_s(model,rng),true)
 
 #------------------phy_PQMC-------------------#
 # U=3.8;     Δt=0.1;     Θ=3.0;   L=15;       Sweeps=1;
@@ -43,11 +50,4 @@ L=9
 # 128.842 s (6038300 allocations: 835.83 MiB)
 # Final 95.108 s (5242872 allocations: 662.00 MiB)
 
-site=[L,L]
 
-model=Hubbard_Para(t,U,Lattice,site,Δt,Θ,BatchSize,"V")
-
-s=Initial_s(model,rng)
-path="C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/SPEED/"
-# println(@btime phy_update($path,$model,1,0,$Initial_s(model,rng)))
-phy_update(path,model,1,0,Initial_s(model,rng))

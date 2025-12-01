@@ -115,7 +115,7 @@ function Initial_s(model::_Hubbard_Para,rng::MersenneTwister)::Array{UInt8,2}
     return s
 end
 
-function Free_G!(G,Lattice,site,Θ,Initial)
+function Free_G!(G,Lattice,site,Θ,Initial,ns)
     """
     input:
         Lattice: "HoneyComb" or "SQUARE"
@@ -128,28 +128,33 @@ function Free_G!(G,Lattice,site,Θ,Initial)
     """
     K=K_Matrix(Lattice,site)
     Ns=size(K)[1]
-    ns=div(Ns, 2)
+    # ns=div(Ns, 2)
 
-    Δt=0.01
+    Δt=0.1
     Nt=Int(round(Θ/Δt))
 
-    Pt = zeros(ComplexF64, Ns, div(Ns, 2))  # 预分配 Pt
+    Pt = zeros(Float64, Ns, ns)  # 预分配 Pt
     if Initial=="H0"
-        KK=K[:,:]
-        μ=1e-1
-        if occursin("HoneyComb", Lattice)
-            KK+=μ*Diagonal(repeat([-1, 1], div(Ns, 2)))
-        elseif Lattice=="SQUARE"
-            for i in 1:Ns
-                x,y=i_xy(Lattice,site,i)
-                KK[i,i]+=μ*(-1)^(x+y)
-            end
-        end
-        E,V=LAPACK.syevd!('V', 'L',KK[:,:])
-        Pt=V[:,1:div(Ns,2)]
+        KK=Matrix{Float64}(K)
+
+        KK[KK .!= 0] .+=( rand(size(KK)...) * 1e-1)[KK.!= 0]
+        KK=(KK+KK')./2
+        
+        # μ=1e-4
+        # if occursin("HoneyComb", Lattice)
+        #     KK+=μ*Diagonal(repeat([-1, 1], div(Ns, 2)))
+        # elseif Lattice=="SQUARE"
+        #     for i in 1:Ns
+        #         x,y=i_xy(Lattice,site,i)
+        #         KK[i,i]+=μ*(-1)^(x+y)
+        #     end
+        # end
+
+        E,V=LAPACK.syevd!('V', 'L',KK)
+        Pt=V[:,1:ns]
     elseif Initial=="V" 
         if occursin("HoneyComb", Lattice)
-            for i in 1:Int(Ns/2)
+            for i in 1:ns
                 Pt[i*2,i]=1
             end
         else
@@ -159,6 +164,9 @@ function Free_G!(G,Lattice,site,Θ,Initial)
                 if (x+y)%2==1
                     Pt[i,count]=1
                     count+=1
+                    if count>ns
+                        break
+                    end
                 end
             end
         end
@@ -167,12 +175,12 @@ function Free_G!(G,Lattice,site,Θ,Initial)
     E,V=LAPACK.syevd!('V', 'L',K[:,:])
     eK=V*Diagonal(exp.(-Δt.*E))*V'
 
-    BL = Array{ComplexF64}(undef, ns, Ns)
-    BR = Array{ComplexF64}(undef, Ns, ns)
-    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
-    tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
-    tmpnn= Matrix{ComplexF64}(undef, ns, ns)
-    tau = Vector{ComplexF64}(undef, ns)
+    BL = Array{Float64}(undef, ns, Ns)
+    BR = Array{Float64}(undef, Ns, ns)
+    tmpNn = Matrix{Float64}(undef, Ns, ns)
+    tmpnN = Matrix{Float64}(undef, ns, Ns)
+    tmpnn= Matrix{Float64}(undef, ns, ns)
+    tau = Vector{Float64}(undef, ns)
     ipiv = Vector{LAPACK.BlasInt}(undef, ns)
 
     BL.=Pt'
@@ -207,6 +215,9 @@ function Free_G!(G,Lattice,site,Θ,Initial)
     for i in diagind(G)
         G[i]+=1
     end
+
+    return BL,BR
+
 end
 
 
