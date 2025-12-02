@@ -10,7 +10,7 @@ module KAPDQMC_tU
     export K_Matrix,xy_i,i_xy,area_index
 
     include("Hubbard_model.jl")
-    export Hubbard_Para,_Hubbard_Para
+    export Hubbard_Para,Hubbard_Para_
 
     include("GreenMatrix.jl")
     export BM_F!,BMinv_F!,G4!,GroverMatrix!,Initial_s,Free_G!,GroverMatrix

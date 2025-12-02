@@ -1,6 +1,6 @@
 
 
-function ctrl_EEicr(path::String,model::_Hubbard_Para,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record::Bool)::Vector{Matrix{UInt8}}
+function ctrl_EEicr(path::String,model::Hubbard_Para_,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record::Bool)::Vector{Matrix{UInt8}}
     if model.Lattice=="SQUARE"
         name="□"
     elseif model.Lattice=="HoneyComb60"
@@ -267,7 +267,7 @@ function ctrl_EEicr(path::String,model::_Hubbard_Para,index::Vector{Int64},Sweep
 end
 
 
-function EE_dir(path::String,model::_Hubbard_Para,index_arr::Vector{Vector{Int64}},WarmSweeps::Int64,Sweeps::Int64,ss::Vector{Matrix{UInt8}})::Vector{Matrix{UInt8}}
+function EE_dir(path::String,model::Hubbard_Para_,index_arr::Vector{Vector{Int64}},WarmSweeps::Int64,Sweeps::Int64,ss::Vector{Matrix{UInt8}})::Vector{Matrix{UInt8}}
     if model.Lattice=="SQUARE"
         name="□"
     elseif model.Lattice=="HoneyComb60"
@@ -522,7 +522,7 @@ end
 
 
 
-function ctrl_EEicr_old(path::String,model::_Hubbard_Para,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record::Bool)::Vector{Matrix{UInt8}}
+function ctrl_EEicr_old(path::String,model::Hubbard_Para_,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record::Bool)::Vector{Matrix{UInt8}}
     if model.Lattice=="SQUARE"
         name="□"
     elseif model.Lattice=="HoneyComb60"

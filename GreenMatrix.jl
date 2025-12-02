@@ -1,5 +1,5 @@
 # 2d Trotter Decomposition
-function BM_F!(tmpN,tmpNN,BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
+function BM_F!(tmpN,tmpNN,BM,model::Hubbard_Para_, s::Array{UInt8, 2}, idx::Int64)
     """
     不包头包尾
     """
@@ -18,7 +18,7 @@ function BM_F!(tmpN,tmpNN,BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int6
     end
 end
 
-function BMinv_F!(tmpN,tmpNN,BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)
+function BMinv_F!(tmpN,tmpNN,BM,model::Hubbard_Para_, s::Array{UInt8, 2}, idx::Int64)
     """
     不包头包尾
     """
@@ -38,52 +38,55 @@ function BMinv_F!(tmpN,tmpNN,BM,model::_Hubbard_Para, s::Array{UInt8, 2}, idx::I
     end
 end
 
-function G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt::Matrix{ComplexF64},G0::Matrix{ComplexF64},Gt0::Matrix{ComplexF64},G0t::Matrix{ComplexF64},nodes::Vector{Int64},idx::Int64,BLMs::Array{ComplexF64,3},BRMs::Array{ComplexF64,3},BMs::Array{ComplexF64,3},BMinvs::Array{ComplexF64,3},direction="Forward")
+function G4!(SCEE::SCEEBuffer_,G::G4Buffer_,nodes::Vector{Int64},idx::Int64,direction="Forward")
     Θidx=div(length(nodes),2)+1
+    BLMs, BRMs, BMs, BMinvs, Gt, G0, Gt0, G0t =
+        G.BLMs, G.BRMs, G.BMs, G.BMinvs, G.Gt, G.G0, G.Gt0, G.G0t
+    II, tmpnn, tmpnN, tmpNN, tmpNN_, ipiv =
+        SCEE.II, SCEE.nn, SCEE.nN, SCEE.NN, SCEE.NN_, SCEE.ipiv
 
-    get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,idx),view(BRMs,:,:,idx),Gt)
-    
+    get_G!(tmpnn,tmpnN,ipiv,view(BLMs,:,:,idx),view(BRMs,:,:,idx),Gt)
     if idx==Θidx
         G0 .= Gt
         if direction=="Forward"
             Gt0.= Gt
             G0t.= Gt .- II 
         elseif direction=="Backward"
-            Gt0.= Gt .- II 
+            Gt0.= Gt .- II
             G0t.= Gt
         end
     else
-        get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,Θidx),view(BRMs,:,:,Θidx),G0)
+        get_G!(tmpnn,tmpnN,ipiv,view(BLMs,:,:,Θidx),view(BRMs,:,:,Θidx),G0)
     
         Gt0 .= II
         G0t .= II
         if idx<Θidx
             for j in idx:Θidx-1
                 if j==idx
-                    tmpNN2 .= Gt
+                    tmpNN_ .= Gt
                 else
-                    get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,j),view(BRMs,:,:,j),tmpNN2)
+                    get_G!(tmpnn,tmpnN,ipiv,view(BLMs,:,:,j),view(BRMs,:,:,j),tmpNN_)
                 end
-                mul!(tmpNN,tmpNN2, G0t)
+                mul!(tmpNN,tmpNN_, G0t)
                 mul!(G0t, view(BMs,:,:,j), tmpNN)
-                tmpNN .= II .- tmpNN2
-                mul!(tmpNN2,Gt0, tmpNN)
-                mul!(Gt0, tmpNN2, view(BMinvs,:,:,j))
+                tmpNN .= II .- tmpNN_
+                mul!(tmpNN_,Gt0, tmpNN)
+                mul!(Gt0, tmpNN_, view(BMinvs,:,:,j))
                 
             end
             lmul!(-1.0, Gt0)
         else
             for j in Θidx:idx-1
                 if j==Θidx
-                    tmpNN2 .= G0
+                    tmpNN_ .= G0
                 else
-                    get_G!(tmpnn,tmpNn,ipiv,view(BLMs,:,:,j),view(BRMs,:,:,j),tmpNN2)
+                    get_G!(tmpnn,tmpnN,ipiv,view(BLMs,:,:,j),view(BRMs,:,:,j),tmpNN_)
                 end
-                mul!(tmpNN, tmpNN2, Gt0)
+                mul!(tmpNN, tmpNN_, Gt0)
                 mul!(Gt0, view(BMs,:,:,j), tmpNN)
-                tmpNN .= II .- tmpNN2
-                mul!(tmpNN2, G0t, tmpNN)
-                mul!(G0t, tmpNN2,view(BMinvs,:,:,j))
+                tmpNN .= II .- tmpNN_
+                mul!(tmpNN_, G0t, tmpNN)
+                mul!(G0t, tmpNN_,view(BMinvs,:,:,j))
             end
             lmul!(-1.0, G0t)
         end        
@@ -100,7 +103,7 @@ function GroverMatrix!(GM::Matrix{ComplexF64},G1::SubArray{ComplexF64, 2, Matrix
     end
 end
 
-function Initial_s(model::_Hubbard_Para,rng::MersenneTwister)::Array{UInt8,2}
+function Initial_s(model::Hubbard_Para_,rng::MersenneTwister)::Array{UInt8,2}
     sp=Random.Sampler(rng,[1,2,3,4])
 
     s::Array{UInt8,2}=zeros(model.Ns,model.Nt)
@@ -220,10 +223,15 @@ function Free_G!(G,Lattice,site,Θ,Initial,ns)
 
 end
 
-
+function get_r!(UPD::UpdateBuffer_,Δs::Float64,Gt)
+    @fastmath Δ = cis(Δs) - 1
+    @fastmath p = 1 + Δ * (1 - Gt[UPD.subidx[1], UPD.subidx[1]])
+    UPD.r[1,1] = Δ / p
+    return abs2(p)
+end
 #######################################################################################################################################
 
-function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Matrix{ComplexF64}
+function BM_F(model::Hubbard_Para_, s::Array{UInt8, 2}, idx::Int64)::Matrix{ComplexF64}
     """
     不包头包尾
     """
@@ -252,7 +260,7 @@ function BM_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Matrix{Comp
     return tmpNN
 end
 
-function BMinv_F(model::_Hubbard_Para, s::Array{UInt8, 2}, idx::Int64)::Matrix{ComplexF64}
+function BMinv_F(model::Hubbard_Para_, s::Array{UInt8, 2}, idx::Int64)::Matrix{ComplexF64}
     """
     不包头包尾
     """
@@ -390,7 +398,7 @@ function Gτ(nodes,lt,BLMs,BRMs)
 end
 
 
-function Gτ_old(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
+function Gτ_old(model::Hubbard_Para_,s::Array{UInt8,2},τ::Int64)::Array{ComplexF64,2}
     """
     equal time Green function
     """
@@ -425,7 +433,7 @@ function Gτ_old(model::_Hubbard_Para,s::Array{UInt8,2},τ::Int64)::Array{Comple
 end
 
 
-function G4_old(model::_Hubbard_Para,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
+function G4_old(model::Hubbard_Para_,s::Array{UInt8,2},τ1::Int64,τ2::Int64)
     """
     displaced Green function
     return:

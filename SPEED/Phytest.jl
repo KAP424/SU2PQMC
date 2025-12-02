@@ -11,7 +11,7 @@ t=1;   Lattice="HoneyComb120"
 U=2;     Δt=0.05;     Θ=1.25;
 BatchSize=5;
 Sweeps=140
-L=6
+L=6   
 
 site=[L,L]
 
@@ -20,7 +20,7 @@ model=Hubbard_Para(t,U,Lattice,site,Δt,Θ,BatchSize,"V")
 s=Initial_s(model,rng)
 path="C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/SPEED/"
 # println(@btime phy_update($path,$model,1,0,$Initial_s(model,rng)))
-phy_update(path,model,Sweeps,Initial_s(model,rng),true)
+phy_update(path,model,Sweeps,Initial_s(model,rng),true )
 
 #------------------phy_PQMC-------------------#
 # U=3.8;     Δt=0.1;     Θ=3.0;   L=15;       Sweeps=1;

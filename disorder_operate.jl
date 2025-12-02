@@ -1,5 +1,5 @@
 
-function SC_DOP(path::String,model::_Hubbard_Para,ω,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,s::Matrix{UInt8},record)::Matrix{UInt8}
+function SC_DOP(path::String,model::Hubbard_Para_,ω,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,s::Matrix{UInt8},record)::Matrix{UInt8}
     if model.Lattice=="SQUARE"
         name="□"
     elseif model.Lattice=="HoneyComb60"
@@ -194,7 +194,7 @@ function SC_DOP(path::String,model::_Hubbard_Para,ω,indexA::Vector{Int64},index
     return s
 end
 
-function DOP_icr(path::String,model::_Hubbard_Para,ω,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,s::Matrix{UInt8},record)::Matrix{UInt8}
+function DOP_icr(path::String,model::Hubbard_Para_,ω,index::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,s::Matrix{UInt8},record)::Matrix{UInt8}
     if model.Lattice=="SQUARE"
         name="□"
     elseif model.Lattice=="HoneyComb60"

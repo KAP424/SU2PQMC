@@ -1,22 +1,26 @@
 # attractive-U and repulsive-U get the same S_2
 
 
-function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record)
+function ctrl_SCEEicr(path::String,model::Hubbard_Para_,indexA::Vector{Int64},indexB::Vector{Int64},Sweeps::Int64,λ::Float64,Nλ::Int64,ss::Vector{Matrix{UInt8}},record)
     global LOCK=ReentrantLock()
     Ns=model.Ns
     ns=div(Ns, 2)
     NN=length(model.nodes)
-    tau = Vector{ComplexF64}(undef, ns)
-    ipiv = Vector{LAPACK.BlasInt}(undef, ns)
-    ipivA = Vector{LAPACK.BlasInt}(undef, length(indexA))
-    ipivB = Vector{LAPACK.BlasInt}(undef, length(indexB))
-    II=Diagonal(ones(ComplexF64,Ns))
+    Θidx=div(NN,2)+1
+
+    UPD = UpdateBuffer()
+    SCEE=SCEEBuffer(model.Ns)
+    A=AreaBuffer(indexA)
+    B=AreaBuffer(indexB)
+    G1=G4Buffer(model.Ns,NN)
+    G2=G4Buffer(model.Ns,NN)
 
     name = if model.Lattice=="SQUARE" "□" 
         elseif model.Lattice=="HoneyComb60" "HC" 
         elseif model.Lattice=="HoneyComb120" "HC120" 
         else error("Lattice: $(model.Lattice) is not allowed !") end    
     file="$(path)/SCEEicr$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)N$(Nλ)BS$(model.BatchSize).csv"
+    rng=MersenneTwister(Threads.threadid()+time_ns())
     
     atexit() do 
         if record
@@ -29,57 +33,18 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         # writedlm("$(path)ss/SS$(name)_t$(model.t)U$(model.U)size$(model.site)Δt$(model.Δt)Θ$(model.Θ)λ$(Int(round(Nλ*λ))).csv", [ss[1] ss[2]],",")
     end
     
-    Gt1= Matrix{ComplexF64}(undef ,Ns, Ns)
-    Gt2= Matrix{ComplexF64}(undef ,Ns, Ns)
-    G01= Matrix{ComplexF64}(undef ,Ns, Ns)
-    G02= Matrix{ComplexF64}(undef ,Ns, Ns)
-    Gt01= Matrix{ComplexF64}(undef ,Ns, Ns)
-    Gt02= Matrix{ComplexF64}(undef ,Ns, Ns)
-    G0t1= Matrix{ComplexF64}(undef ,Ns, Ns)
-    G0t2= Matrix{ComplexF64}(undef ,Ns, Ns)
-    gmInv_A=Matrix{ComplexF64}(undef ,length(indexA),length(indexA))
-    gmInv_B=Matrix{ComplexF64}(undef ,length(indexB),length(indexB))
-    detg_A=detg_B=0.0
+    Gt1,Gt01,G0t1,BLMs1,BRMs1,BMs1,BMsinv1 =
+        G1.Gt, G1.Gt0, G1.G0t, G1.BLMs, G1.BRMs, G1.BMs, G1.BMinvs
+    Gt2,Gt02,G0t2,BLMs2,BRMs2,BMs2,BMsinv2 =
+        G2.Gt, G2.Gt0, G2.G0t, G2.BLMs, G2.BRMs, G2.BMs, G2.BMinvs
 
-    b_A= Matrix{ComplexF64}(undef ,1,length(indexA))
-    tmp1A= Matrix{ComplexF64}(undef ,1,length(indexA))
-    tmpA1= Matrix{ComplexF64}(undef ,length(indexA),1)
-    a_A= Matrix{ComplexF64}(undef ,length(indexA),1)
+    tmpN ,tmpN_,tmpNN,tmpNn,tmpnN,tau = SCEE.N,SCEE.N_,SCEE.NN,SCEE.Nn,SCEE.nN,SCEE.tau
 
-    b_B= Matrix{ComplexF64}(undef ,1,length(indexB))
-    tmp1B= Matrix{ComplexF64}(undef ,1,length(indexB))
-    tmpB1= Matrix{ComplexF64}(undef ,length(indexB),1)
-    a_B= Matrix{ComplexF64}(undef ,length(indexB),1)
-
-    # 预分配临时数组
-    tmpN = Vector{ComplexF64}(undef, Ns)
-    tmpN_ = Vector{ComplexF64}(undef, Ns)
-    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
-    tmpNN2 = Matrix{ComplexF64}(undef, Ns, Ns)
-    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
-    tmpnn = Matrix{ComplexF64}(undef, ns, ns)
-    tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
-    tmp1N = Matrix{ComplexF64}(undef ,1, Ns)
-    tmpAA = Matrix{ComplexF64}(undef ,length(indexA),length(indexA))
-    tmpBB = Matrix{ComplexF64}(undef ,length(indexB),length(indexB))
-
-    rng=MersenneTwister(Threads.threadid()+time_ns())
-    elements=(1, 2, 3, 4)
-    samplers_dict = Dict{UInt8, Random.Sampler}()
-    for excluded in elements
-        allowed = [i for i in elements if i != excluded]
-        samplers_dict[excluded] = Random.Sampler(rng, allowed)
-    end
     
     tmpO=0.0
     counter=0
     O=zeros(Float64,Sweeps+1)
     O[1]=λ
-
-    BMs1=Array{ComplexF64}(undef,Ns,Ns,NN-1)  # Number_of_BM*Ns*Ns
-    BMs2=Array{ComplexF64}(undef,Ns,Ns,NN-1)  # Number_of_BM*Ns*Ns
-    BMsinv1=Array{ComplexF64}(undef,Ns,Ns,NN-1)  # Number_of_BM*Ns*Ns
-    BMsinv2=Array{ComplexF64}(undef,Ns,Ns,NN-1)  # Number_of_BM*Ns*Ns
 
     for idx in 1:NN-1
         BM_F!(tmpN,tmpNN,view(BMs1,:, : , idx),model,ss[1],idx)
@@ -88,13 +53,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         BMinv_F!(tmpN,tmpNN,view(BMsinv2,:,:,idx),model,ss[2],idx)
     end
 
-    BLMs1=Array{ComplexF64}(undef,ns,Ns,NN)
-    BRMs1=Array{ComplexF64}(undef,Ns,ns,NN)
     transpose!(view(BLMs1,:,:,NN) , model.Pt)
     copyto!(view(BRMs1,:,:,1) , model.Pt)
     
-    BLMs2=Array{ComplexF64}(undef,ns,Ns,NN)
-    BRMs2=Array{ComplexF64}(undef,Ns,ns,NN)
     transpose!(view(BLMs2,:,:,NN) , model.Pt)
     copyto!(view(BRMs2,:,:,1) , model.Pt)
 
@@ -120,20 +81,9 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         copyto!(view(BRMs2,:,:,i+1) , tmpNn)
 
     end
-    Θidx=div(NN,2)+1
 
-    G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt1,G01,Gt01,G0t1,model.nodes,1,BLMs1,BRMs1,BMs1,BMsinv1)
-    G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt2,G02,Gt02,G0t2,model.nodes,1,BLMs2,BRMs2,BMs2,BMsinv2)
-    GroverMatrix!(gmInv_A,view(G01,indexA,indexA),view(G02,indexA,indexA))
-    detg_A=abs2(det(gmInv_A))
-    LAPACK.getrf!(gmInv_A,ipivA)
-    LAPACK.getri!(gmInv_A, ipivA)
-    GroverMatrix!(gmInv_B,view(G01,indexB,indexB),view(G02,indexB,indexB))
-    detg_B=abs2(det(gmInv_B))
-    LAPACK.getrf!(gmInv_B,ipivB)
-    LAPACK.getri!(gmInv_B, ipivB)
     idx=1
-
+    get_ABGM!(G1,G2,A,B,SCEE,model.nodes,idx,"Forward")
     for loop in 1:Sweeps
         # println("\n ====== Sweep $loop / $Sweeps ======")
         for lt in 1:model.Nt
@@ -150,106 +100,19 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
             WrapKV!(tmpNN,model.eK,model.eKinv,tmpN_,G0t2,"Forward", "R")
 
             #####################################################################
-            # Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],lt,div(model.Nt,2))
-            # Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],lt,div(model.Nt,2))
+            Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],lt,div(model.Nt,2))
+            Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],lt,div(model.Nt,2))
                 
-            # if norm(Gt1-Gt1_)+norm(Gt2-Gt2_)+norm(Gt01-Gt01_)+norm(Gt02-Gt02_)+norm(G0t1-G0t1_)+norm(G0t2-G0t2_)>1e-3
-            #     println( norm(Gt1-Gt1_),'\n',norm(Gt2-Gt2_),'\n',norm(Gt01-Gt01_),'\n',norm(Gt02-Gt02_),'\n',norm(G0t1-G0t1_),'\n',norm(G0t2-G0t2_) )
-            #     error("WrapTime=$lt ")
-            # end
+            if norm(Gt1-Gt1_)+norm(Gt2-Gt2_)+norm(Gt01-Gt01_)+norm(Gt02-Gt02_)+norm(G0t1-G0t1_)+norm(G0t2-G0t2_)>1e-3
+                println( norm(Gt1-Gt1_),'\n',norm(Gt2-Gt2_),'\n',norm(Gt01-Gt01_),'\n',norm(Gt02-Gt02_),'\n',norm(G0t1-G0t1_),'\n',norm(G0t2-G0t2_) )
+                error("WrapTime=$lt ")
+            end
             #####################################################################
 
-
-            for x in 1:Ns
-                # ss[1]
-                begin
-                    sx=rand(rng,samplers_dict[ss[1][x,lt]])
-                
-                    @fastmath Δ=cis(model.α*(model.η[sx]-model.η[ss[1][x,lt]]))-1
-                    @fastmath r=1+Δ*(1-Gt1[x,x])
-                    @fastmath p=model.γ[sx]/model.γ[ss[1][x,lt]]*abs2(r)
-                    r=Δ/r
-
-                    Tau_A=get_abTau1!(tmpAA,tmp1A,a_A,b_A,indexA,x,r,G02,Gt01,G0t1,gmInv_A)
-                    Tau_B=get_abTau1!(tmpBB,tmp1B,a_B,b_B,indexB,x,r,G02,Gt01,G0t1,gmInv_B)
-
-                    @fastmath p*= abs2(Tau_A)^λ * abs2(Tau_B)^(1-λ)
-                                    
-                    if rand(rng)<p
-                        GMupdate!(tmpA1,tmpAA,a_A,b_A,Tau_A,gmInv_A)
-                        GMupdate!(tmpB1,tmpBB,a_B,b_B,Tau_B,gmInv_B)
-                        G4update!(tmpNN,tmp1N,x,r,Gt1,G01,Gt01,G0t1)
-                        detg_A*=abs2(Tau_A)
-                        detg_B*=abs2(Tau_B)
-
-                        ss[1][x,lt]=sx
-                        #####################################################################
-                        # print('-')
-                        
-                        # Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],lt,div(model.Nt,2))
-                        # GM_A_=GroverMatrix(G01_[indexA,indexA],G02[indexA,indexA])
-                        # gmInv_A_=inv(GM_A_)
-                        # GM_B_=GroverMatrix(G01_[indexB,indexB],G02[indexB,indexB])
-                        # gmInv_B_=inv(GM_B_)
-                        # detg_A_=abs2(det(GM_A_))
-                        # detg_B_=abs2(det(GM_B_))
-                        # # println((G01_-G01)./(G0t1[:,x:x]*Gt01[x:x,:]))
-                        # # println(1/Tau_A)
-                        # # println((GM_A_-gmInv_A)./(a_A*b_A*gmInv_A))
-
-                        # if norm(Gt1-Gt1_)+norm(G01-G01_)+norm(Gt01-Gt01_)+norm(G0t1-G0t1_)+
-                        #    norm(gmInv_A_-gmInv_A)+norm(gmInv_B-gmInv_B_)+abs(detg_A-detg_A_)+abs(detg_B-detg_B_)>1e-3
-                        #     println('\n',norm(Gt1-Gt1_),'\n',norm(G01-G01_),'\n',norm(Gt01-Gt01_),'\n',norm(G0t1-G0t1_))
-                        #     println(norm(gmInv_A_-gmInv_A),' ',norm(gmInv_B-gmInv_B_),"\n",abs(detg_A-detg_A_),' ',abs(detg_B-detg_B_))
-                        #     error("$lt  $x:,,,asdasdasd")
-                        # end
-                        #####################################################################
-                    end
-                end
-
-                # ss[2]
-                begin
-                    sx=rand(rng,samplers_dict[ss[2][x,lt]])
-                
-                    @fastmath Δ=cis(model.α*(model.η[sx]-model.η[ss[2][x,lt]]))-1
-                    @fastmath r=1+Δ*(1-Gt2[x,x])
-                    @fastmath p=model.γ[sx]/model.γ[ss[2][x,lt]]*abs2(r)
-                    r=Δ/r
-                    Tau_A=get_abTau2!(tmpAA,a_A,b_A,indexA,x,r,G01,Gt02,G0t2,gmInv_A)
-                    Tau_B=get_abTau2!(tmpBB,a_B,b_B,indexB,x,r,G01,Gt02,G0t2,gmInv_B)
-
-                    @fastmath p*= abs2(Tau_A)^λ * abs2(Tau_B)^(1-λ)
-                                    
-                    if rand(rng)<p
-                        GMupdate!(tmpA1,tmpAA,a_A,b_A,Tau_A,gmInv_A)
-                        GMupdate!(tmpB1,tmpBB,a_B,b_B,Tau_B,gmInv_B)
-                        G4update!(tmpNN,tmp1N,x,r,Gt2,G02,Gt02,G0t2)
-                        detg_A*=abs2(Tau_A)
-                        detg_B*=abs2(Tau_B)
-                        ss[2][x,lt]=sx
-                        # #####################################################################
-                        # print('*')
-                        # Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],lt,div(model.Nt,2))
-                        # GM_A_=GroverMatrix(G01[indexA,indexA],G02_[indexA,indexA])
-                        # gmInv_A_=inv(GM_A_)
-                        # GM_B_=GroverMatrix(G01[indexB,indexB],G02_[indexB,indexB])
-                        # gmInv_B_=inv(GM_B_)
-                        # detg_A_=abs2(det(GM_A_))
-                        # detg_B_=abs2(det(GM_B_))
-
-                        # if norm(Gt2-Gt2_)+norm(G02-G02_)+norm(Gt02-Gt02_)+norm(G0t2-G0t2_)+
-                        #    norm(gmInv_A_-gmInv_A)+norm(gmInv_B-gmInv_B_)+abs(detg_A-detg_A_)+abs(detg_B-detg_B_)>1e-3
-                        #     println('\n',norm(Gt2-Gt2_),'\n',norm(G02-G02_),'\n',norm(Gt02-Gt02_),'\n',norm(G0t2-G0t2_))
-                        #     println(norm(gmInv_A_-gmInv_A),' ',norm(gmInv_B-gmInv_B_),"\n",abs(detg_A-detg_A_),' ',abs(detg_B-detg_B_))
-                        #     error("$lt  $x:,,,asdasdasd")
-                        # end
-                        #####################################################################
-                    end
-                end
-            end
+            UpdateSCEELayer!(rng,view(ss[1],:,lt),view(ss[2],:,lt),G1,G2,A,B,model,UPD,SCEE,λ)
 
             ##------------------------------------------------------------------------
-            tmpO+=(detg_A/detg_B)^(1/Nλ)
+            tmpO+=(A.detg/B.detg)^(1/Nλ)
             counter+=1
             ##------------------------------------------------------------------------
 
@@ -284,16 +147,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                     LAPACK.orgrq!(tmpnN, tau, ns)
                     copyto!(view(BLMs2,:,:,i) , tmpnN)
                 end
-                G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt1,G01,Gt01,G0t1,model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1,"Forward")
-                G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt2,G02,Gt02,G0t2,model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2,"Forward")
-                GroverMatrix!(gmInv_A,view(G01,indexA,indexA),view(G02,indexA,indexA))
-                detg_A=abs2(det(gmInv_A))
-                LAPACK.getrf!(gmInv_A,ipivA)
-                LAPACK.getri!(gmInv_A, ipivA)
-                GroverMatrix!(gmInv_B,view(G01,indexB,indexB),view(G02,indexB,indexB))
-                detg_B=abs2(det(gmInv_B))
-                LAPACK.getrf!(gmInv_B,ipivB)
-                LAPACK.getri!(gmInv_B, ipivB)
+                get_ABGM!(G1,G2,A,B,SCEE,model.nodes,idx,"Forward")
             end
 
         end
@@ -303,104 +157,18 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
         for lt in model.Nt:-1:1
             
             #####################################################################
-            # Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],lt,div(model.Nt,2))
-            # Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],lt,div(model.Nt,2))
-            # if norm(Gt1-Gt1_)+norm(Gt2-Gt2_)+norm(Gt01-Gt01_)+norm(Gt02-Gt02_)+norm(G0t1-G0t1_)+norm(G0t2-G0t2_)>1e-3
-            #     println( norm(Gt1-Gt1_),'\n',norm(Gt2-Gt2_),'\n',norm(Gt01-Gt01_),'\n',norm(Gt02-Gt02_),'\n',norm(G0t1-G0t1_),'\n',norm(G0t2-G0t2_) )
-            #     error("WrapTime=$lt ")
-            # end
+            Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],lt,div(model.Nt,2))
+            Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],lt,div(model.Nt,2))
+            if norm(Gt1-Gt1_)+norm(Gt2-Gt2_)+norm(Gt01-Gt01_)+norm(Gt02-Gt02_)+norm(G0t1-G0t1_)+norm(G0t2-G0t2_)>1e-3
+                println( norm(Gt1-Gt1_),'\n',norm(Gt2-Gt2_),'\n',norm(Gt01-Gt01_),'\n',norm(Gt02-Gt02_),'\n',norm(G0t1-G0t1_),'\n',norm(G0t2-G0t2_) )
+                error("WrapTime=$lt ")
+            end
             #####################################################################
             
-            for x in 1:Ns
-                # ss[1]
-                begin
-                    sx=rand(rng,samplers_dict[ss[1][x,lt]])
-                
-                    @fastmath Δ=cis(model.α*(model.η[sx]-model.η[ss[1][x,lt]]))-1
-                    @fastmath r=1+Δ*(1-Gt1[x,x])
-                    @fastmath p=model.γ[sx]/model.γ[ss[1][x,lt]]*abs2(r)
-                    r=Δ/r
-
-                    Tau_A=get_abTau1!(tmpAA,tmp1A,a_A,b_A,indexA,x,r,G02,Gt01,G0t1,gmInv_A)
-                    Tau_B=get_abTau1!(tmpBB,tmp1B,a_B,b_B,indexB,x,r,G02,Gt01,G0t1,gmInv_B)
-
-                    @fastmath p*= abs2(Tau_A)^λ * abs2(Tau_B)^(1-λ)
-                                    
-                    if rand(rng)<p
-                        GMupdate!(tmpA1,tmpAA,a_A,b_A,Tau_A,gmInv_A)
-                        GMupdate!(tmpB1,tmpBB,a_B,b_B,Tau_B,gmInv_B)
-                        G4update!(tmpNN,tmp1N,x,r,Gt1,G01,Gt01,G0t1)
-                        detg_A*=abs2(Tau_A)
-                        detg_B*=abs2(Tau_B)
-
-                        ss[1][x,lt]=sx
-                        #####################################################################
-                        # print('-')
-                        
-                        # Gt1_,G01_,Gt01_,G0t1_=G4_old(model,ss[1],lt,div(model.Nt,2))
-                        # GM_A_=GroverMatrix(G01_[indexA,indexA],G02[indexA,indexA])
-                        # gmInv_A_=inv(GM_A_)
-                        # GM_B_=GroverMatrix(G01_[indexB,indexB],G02[indexB,indexB])
-                        # gmInv_B_=inv(GM_B_)
-                        # detg_A_=abs2(det(GM_A_))
-                        # detg_B_=abs2(det(GM_B_))
-                        # # println((G01_-G01)./(G0t1[:,x:x]*Gt01[x:x,:]))
-                        # # println(1/Tau_A)
-                        # # println((GM_A_-gmInv_A)./(a_A*b_A*gmInv_A))
-
-                        # if norm(Gt1-Gt1_)+norm(G01-G01_)+norm(Gt01-Gt01_)+norm(G0t1-G0t1_)+
-                        #    norm(gmInv_A_-gmInv_A)+norm(gmInv_B-gmInv_B_)+abs(detg_A-detg_A_)+abs(detg_B-detg_B_)>1e-3
-                        #     println('\n',norm(Gt1-Gt1_),'\n',norm(G01-G01_),'\n',norm(Gt01-Gt01_),'\n',norm(G0t1-G0t1_))
-                        #     println(norm(gmInv_A_-gmInv_A),' ',norm(gmInv_B-gmInv_B_),"\n",abs(detg_A-detg_A_),' ',abs(detg_B-detg_B_))
-                        #     error("$lt  $x:,,,asdasdasd")
-                        # end
-                        #####################################################################
-                    end
-                end
-
-                # ss[2]
-                begin
-                    sx=rand(rng,samplers_dict[ss[2][x,lt]])
-                
-                    @fastmath Δ=cis(model.α*(model.η[sx]-model.η[ss[2][x,lt]]))-1
-                    @fastmath r=1+Δ*(1-Gt2[x,x])
-                    @fastmath p=model.γ[sx]/model.γ[ss[2][x,lt]]*abs2(r)
-                    r=Δ/r
-                    Tau_A=get_abTau2!(tmpAA,a_A,b_A,indexA,x,r,G01,Gt02,G0t2,gmInv_A)
-                    Tau_B=get_abTau2!(tmpBB,a_B,b_B,indexB,x,r,G01,Gt02,G0t2,gmInv_B)
-
-                    @fastmath p*= abs2(Tau_A)^λ * abs2(Tau_B)^(1-λ)
-                                    
-                    if rand(rng)<p
-                        GMupdate!(tmpA1,tmpAA,a_A,b_A,Tau_A,gmInv_A)
-                        GMupdate!(tmpB1,tmpBB,a_B,b_B,Tau_B,gmInv_B)
-                        G4update!(tmpNN,tmp1N,x,r,Gt2,G02,Gt02,G0t2)
-                        detg_A*=abs2(Tau_A)
-                        detg_B*=abs2(Tau_B)
-                        ss[2][x,lt]=sx
-                        # #####################################################################
-                        # print('*')
-                        # Gt2_,G02_,Gt02_,G0t2_=G4_old(model,ss[2],lt,div(model.Nt,2))
-                        # GM_A_=GroverMatrix(G01[indexA,indexA],G02_[indexA,indexA])
-                        # gmInv_A_=inv(GM_A_)
-                        # GM_B_=GroverMatrix(G01[indexB,indexB],G02_[indexB,indexB])
-                        # gmInv_B_=inv(GM_B_)
-                        # detg_A_=abs2(det(GM_A_))
-                        # detg_B_=abs2(det(GM_B_))
-
-                        # if norm(Gt2-Gt2_)+norm(G02-G02_)+norm(Gt02-Gt02_)+norm(G0t2-G0t2_)+
-                        #    norm(gmInv_A_-gmInv_A)+norm(gmInv_B-gmInv_B_)+abs(detg_A-detg_A_)+abs(detg_B-detg_B_)>1e-3
-                        #     println('\n',norm(Gt2-Gt2_),'\n',norm(G02-G02_),'\n',norm(Gt02-Gt02_),'\n',norm(G0t2-G0t2_))
-                        #     println(norm(gmInv_A_-gmInv_A),' ',norm(gmInv_B-gmInv_B_),"\n",abs(detg_A-detg_A_),' ',abs(detg_B-detg_B_))
-                        #     error("$lt  $x:,,,asdasdasd")
-                        # end
-                        #####################################################################
-                    end
-                end
-            end
+            UpdateSCEELayer!(rng,view(ss[1],:,lt),view(ss[2],:,lt),G1,G2,A,B,model,UPD,SCEE,λ)
 
             ##------------------------------------------------------------------------
-            tmpO+=(detg_A/detg_B)^(1/Nλ)
+            tmpO+=(A.detg/B.detg)^(1/Nλ)
             counter+=1
             ##------------------------------------------------------------------------
 
@@ -434,16 +202,7 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
                     LAPACK.orgqr!(tmpNn, tau, ns)
                     copyto!(view(BRMs2,:,:,i) , tmpNn)
                 end
-                G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt1,G01,Gt01,G0t1,model.nodes,idx,BLMs1,BRMs1,BMs1,BMsinv1,"Backward")
-                G4!(II,tmpnn,tmpNn,tmpNN,tmpNN2,ipiv,Gt2,G02,Gt02,G0t2,model.nodes,idx,BLMs2,BRMs2,BMs2,BMsinv2,"Backward")
-                GroverMatrix!(gmInv_A,view(G01,indexA,indexA),view(G02,indexA,indexA))
-                detg_A=abs2(det(gmInv_A))
-                LAPACK.getrf!(gmInv_A,ipivA)
-                LAPACK.getri!(gmInv_A, ipivA)
-                GroverMatrix!(gmInv_B,view(G01,indexB,indexB),view(G02,indexB,indexB))
-                detg_B=abs2(det(gmInv_B))
-                LAPACK.getrf!(gmInv_B,ipivB)
-                LAPACK.getri!(gmInv_B, ipivB)
+                get_ABGM!(G1,G2,A,B,SCEE,model.nodes,idx,"Backward")
             else
                 @inbounds @simd for iii in 1:Ns
                     @fastmath tmpN[iii] = cis(- model.α *model.η[ss[1][iii, lt]] ) 
@@ -469,51 +228,158 @@ function ctrl_SCEEicr(path::String,model::_Hubbard_Para,indexA::Vector{Int64},in
 end
 
 
-function get_abTau1!(tmpAA::Matrix{ComplexF64},tmp1A,a::Matrix{ComplexF64},b::Matrix{ComplexF64},index::Vector{Int64},x::Int64,r::ComplexF64,G0::Matrix{ComplexF64},Gt0::Matrix{ComplexF64},G0t::Matrix{ComplexF64},gmInv::Matrix{ComplexF64})
-    copyto!(tmpAA, view(G0,index,index))
-    lmul!(2.0, tmpAA)
-    for i in diagind(tmpAA)
-        tmpAA[i] -= 1
+"""
+    Return det(Tau)
+    Update s1 and overwrite a , b , Tau.
+        a = G0t1(:,subidx) ⋅ r
+        b = Gt01[subidx,:] ⋅ (2G02-I) ⋅ gmInv
+    with r ≡ inv(r) ⋅ Δ
+    Warning : G02 here !!!  Gt01,G0t1
+    ------------------------------------------------------------------------------
+"""
+function get_abTau1!(A::AreaBuffer_,UPD::UpdateBuffer_,G0,Gt0,G0t)
+    copyto!(A.NN, view(G0,A.index,A.index))
+    lmul!(2.0, A.NN)
+    for i in diagind(A.NN)
+        A.NN[i] -= 1
     end
-    mul!(tmp1A, view(Gt0,x:x,index), tmpAA)
-    mul!(b, tmp1A, gmInv)
-    copyto!(a,view(G0t,index,x))
-    lmul!(r,b)
-    Tau=dotu(a, b)+1
-    return Tau
-end
-
-
-function get_abTau2!(tmpAA::Matrix{ComplexF64},a::Matrix{ComplexF64},b::Matrix{ComplexF64},index::Vector{Int64},x::Int64,r::ComplexF64,G0::Matrix{ComplexF64},Gt0::Matrix{ComplexF64},G0t::Matrix{ComplexF64},gmInv::Matrix{ComplexF64})
-    copyto!(tmpAA, view(G0,index,index))
-    lmul!(2.0, tmpAA)
-    for i in diagind(tmpAA)
-        tmpAA[i] -= 1
+    mul!(A.zN,view(Gt0,UPD.subidx,A.index),A.NN)
+    mul!(A.b, A.zN, A.gmInv)
+    mul!(A.a,view(G0t,A.index,UPD.subidx),UPD.r)
+    mul!(A.Tau, A.b, A.a)
+    for i in diagind(A.Tau)
+        A.Tau[i] += 1
     end
-    mul!(a,tmpAA,view(G0t,index,x))
-    mul!(b,view(Gt0,x:x,index),gmInv)
-    lmul!(r,a)
-    Tau=dotu(a,b)+1
-    return Tau
+    ans=abs2(det(A.Tau))
+    return ans
 end
 
-function G4update!(tmpNN::Matrix{ComplexF64},tmp1N::Matrix{ComplexF64},x::Int64,r::ComplexF64,Gt::Matrix{ComplexF64},G0::Matrix{ComplexF64},Gt0::Matrix{ComplexF64},G0t::Matrix{ComplexF64})
-    mul!(tmpNN, view(G0t,:,x),view(Gt0,x:x,:))
-    axpy!(r, tmpNN, G0)
-    mul!(tmpNN, view(Gt,:,x),view(Gt0,x:x,:))
-    axpy!(r, tmpNN, Gt0)
 
-    copyto!(tmp1N , view(Gt,x:x, :))
-    lmul!(-1.0, tmp1N)
-    tmp1N[1, x] += 1
-    mul!(tmpNN, view(G0t,:,x),tmp1N)
-    axpy!(-r, tmpNN, G0t)
-    mul!(tmpNN, view(Gt,:,x),tmp1N)
-    axpy!(-r, tmpNN, Gt)
+"""
+    Return det(Tau)
+    Update s2 and overwrite a , b , Tau.
+        a = (2G01-I) ⋅ G0t2(:,subidx)
+        b = r ⋅ Gt02[subidx,:] ⋅ gmInv
+    with r ≡ inv(r) ⋅ Δ
+    Warning : G01 here !!!  Gt02,G0t2
+    ------------------------------------------------------------------------------
+"""
+function get_abTau2!(A::AreaBuffer_,UPD::UpdateBuffer_,G0,Gt0,G0t)
+    copyto!(A.NN , view(G0,A.index,A.index))
+    lmul!(2.0, A.NN)
+    for i in diagind(A.NN)
+        A.NN[i] -= 1
+    end
+    mul!(A.a,A.NN,view(G0t,A.index,UPD.subidx))
+    mul!(A.zN,UPD.r,view(Gt0,UPD.subidx,A.index))
+    mul!(A.b,A.zN,A.gmInv)
+    mul!(A.Tau, A.b, A.a)
+    for i in diagind(A.Tau)
+        A.Tau[i] += 1
+    end
+    ans=abs2(det(A.Tau))
+    return ans
 end
 
-function GMupdate!(tmpA1::Matrix{ComplexF64},tmpAA::Matrix{ComplexF64},a::Matrix{ComplexF64},b::Matrix{ComplexF64},Tau::ComplexF64,gmInv::Matrix{ComplexF64})
-    mul!(tmpA1, gmInv,a )
-    mul!(tmpAA, tmpA1,b)
-    axpy!(-1/Tau, tmpAA, gmInv)
+"""
+    Update G4 by overwriting Gt,G0,Gt0,G0t with r and subidx.
+        G0 = G0 + G0t(:,subidx) ⋅ r ⋅ Gt0[subidx,:]
+        Gt0 = Gt0 + r ⋅ Gt[subidx,:] ⋅ G0t(:,subidx)
+
+        G0t = G0t - G0t(:,subidx) ⋅ r ⋅ (I-Gt[subidx,:])
+        Gt = Gt - r ⋅ Gt[subidx,:] ⋅ r ⋅ (I-Gt[subidx,:])
+    with r ≡ inv(r) ⋅ Δ
+    ------------------------------------------------------------------------------
+"""
+function G4update!(SCEE::SCEEBuffer_,UPD::UpdateBuffer_,G::G4Buffer_)
+    mul!(SCEE.zN,UPD.r,view(G.Gt0,UPD.subidx,:))   # useful for GΘ,GτΘ
+    mul!(SCEE.NN, view(G.G0t,:,UPD.subidx),SCEE.zN)
+    axpy!(1.0, SCEE.NN, G.G0)
+    mul!(SCEE.NN, view(G.Gt,:,UPD.subidx),SCEE.zN)
+    axpy!(1.0, SCEE.NN, G.Gt0)
+
+    mul!(SCEE.zN,UPD.r,view(G.Gt,UPD.subidx,:))
+    lmul!(-1.0,SCEE.zN)
+    axpy!(1.0,UPD.r,view(SCEE.zN,:,UPD.subidx))   # useful for GΘτ,Gτ
+    mul!(SCEE.NN, view(G.G0t,:,UPD.subidx),SCEE.zN)
+    axpy!(-1.0, SCEE.NN, G.G0t)
+    mul!(SCEE.NN, view(G.Gt,:,UPD.subidx),SCEE.zN)
+    axpy!(-1.0, SCEE.NN, G.Gt)
+end
+
+"""
+    Update gmInv with a,b,Tau.
+        gmInv = gmInv - gmInv ⋅ a ⋅ inv(Tau) ⋅ b
+    Universal for s1 and s2.
+    ------------------------------------------------------------------------------
+"""
+function GMupdate!(A::AreaBuffer_)
+    mul!(A.Nz, A.gmInv,A.a )
+    # inv22!(A.Tau)
+    A.Tau .= inv(A.Tau)
+    mul!(A.zN,A.Tau,A.b)
+    mul!(A.NN, A.Nz, A.zN)
+    axpy!(-1.0, A.NN, A.gmInv)
+end
+
+function get_ABGM!(G1::G4Buffer_,G2::G4Buffer_,A::AreaBuffer_,B::AreaBuffer_,SCEE::SCEEBuffer_,nodes,idx,direction::String="Backward")
+    G4!(SCEE,G1,nodes,idx,direction)
+    G4!(SCEE,G2,nodes,idx,direction)
+    GroverMatrix!(A.gmInv,view(G1.G0,A.index,A.index),view(G2.G0,A.index,A.index))
+    A.detg=abs2(det(A.gmInv))
+    LAPACK.getrf!(A.gmInv, A.ipiv)
+    LAPACK.getri!(A.gmInv, A.ipiv)
+
+    GroverMatrix!(B.gmInv,view(G1.G0,B.index,B.index),view(G2.G0,B.index,B.index))
+    B.detg=abs2(det(B.gmInv))
+    LAPACK.getrf!(B.gmInv, B.ipiv)
+    LAPACK.getri!(B.gmInv, B.ipiv)
+end 
+
+function UpdateSCEELayer!(rng,s1,s2,G1::G4Buffer_,G2::G4Buffer_,A::AreaBuffer_,B::AreaBuffer_,model::Hubbard_Para_,UPD::UpdateBuffer_,SCEE::SCEEBuffer_,λ)
+    for i in axes(s1,1)
+        UPD.subidx=[i]
+
+        # update s1
+        begin
+            sx = rand(rng,  model.samplers_dict[s1[i]])
+            p=get_r!(UPD,model.α * (model.η[sx]- model.η[s1[i]]),G1.Gt)
+            p*=model.γ[sx]/model.γ[s1[i]]
+
+            detTau_A=get_abTau1!(A,UPD,G2.G0,G1.Gt0,G1.G0t)
+            detTau_B=get_abTau1!(B,UPD,G2.G0,G1.Gt0,G1.G0t)
+
+            @fastmath p*= (detTau_A)^λ * (detTau_B)^(1-λ)
+            if rand(rng)<p
+                A.detg*=detTau_A
+                B.detg*=detTau_B
+
+                GMupdate!(A)
+                GMupdate!(B)
+                G4update!(SCEE,UPD,G1)
+                s1[i]=sx
+            end
+        end
+
+        # update ss[2]
+        begin
+            sx = rand(rng,  model.samplers_dict[s2[i]])
+            p=get_r!(UPD,model.α * (model.η[sx]- model.η[s2[i]]),G2.Gt)
+            p*=model.γ[sx]/model.γ[s2[i]]
+
+            detTau_A=get_abTau2!(A,UPD,G1.G0,G2.Gt0,G2.G0t)
+            detTau_B=get_abTau2!(B,UPD,G1.G0,G2.Gt0,G2.G0t)
+
+            @fastmath p*= (detTau_A)^λ * (detTau_B)^(1-λ)
+            if rand(rng)<p
+                A.detg*=detTau_A
+                B.detg*=detTau_B
+
+                GMupdate!(A)
+                GMupdate!(B)
+                G4update!(SCEE,UPD,G2)
+                s2[i]=sx
+            end
+        end
+    end
 end

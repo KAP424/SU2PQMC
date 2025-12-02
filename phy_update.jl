@@ -1,44 +1,37 @@
 
 
-function phy_update(path::String, model::_Hubbard_Para, Sweeps::Int64, s::Array{UInt8, 2},record::Bool=false)
-    Ns=model.Ns
-    ns=div(Ns, 2)
+function phy_update(path::String, model::Hubbard_Para_, Sweeps::Int64, s::Array{UInt8, 2},record::Bool=false)
+    global LOCK=ReentrantLock()
+    ERROR=1e-6
+
     NN=length(model.nodes)
     Θidx=div(NN,2)+1
-    tau = Vector{ComplexF64}(undef, ns)
-    ipiv = Vector{LAPACK.BlasInt}(undef, ns)
-
+    Phy = PhyBuffer(model.Ns, NN) 
+    UPD = UpdateBuffer()
 
     name = if model.Lattice=="SQUARE" "□" 
     elseif model.Lattice=="HoneyComb60" "HC" 
     elseif model.Lattice=="HoneyComb120" "HC120" 
     else error("Lattice: $(model.Lattice) is not allowed !") end  
 
+    Ns=model.Ns
+    ns=div(Ns, 2)
     rng = MersenneTwister(Threads.threadid()+time_ns())
-    elements = (1, 2, 3, 4)
-    samplers_dict = Dict{UInt8, Random.Sampler}()
-    for excluded in elements
-        allowed = [i for i in elements if i != excluded]
-        samplers_dict[excluded] = Random.Sampler(rng, allowed)
-    end
+
+    G = Phy.G
+    tau = Phy.tau
+    ipiv = Phy.ipiv
+    BLs = Phy.BLs
+    BRs = Phy.BRs
+    tmpN = Phy.N
+    tmpNN = Phy.NN
+    BM = Phy.BM
+    tmpNn = Phy.Nn
+    tmpnn = Phy.nn
+    tmpnN = Phy.nN
 
     Ek=Eu=CDW0=CDW1=SDW0=SDW1=0.0
     counter = 0
-
-    G = Matrix{ComplexF64}(undef ,Ns, Ns)
-
-    # 预分配 BL 和 BR
-    BLs = Array{ComplexF64}(undef, ns, Ns,NN)
-    BRs = Array{ComplexF64}(undef, Ns, ns,NN)
-
-    # 预分配临时数组
-    tmpN = Vector{ComplexF64}(undef, Ns)
-    tmpNN = Matrix{ComplexF64}(undef, Ns, Ns)
-    BM = Matrix{ComplexF64}(undef, Ns, Ns)
-    tmpNn = Matrix{ComplexF64}(undef, Ns, ns)
-    tmpnn = Matrix{ComplexF64}(undef, ns, ns)
-    tmpnN = Matrix{ComplexF64}(undef, ns, Ns)
-    tmp1N = Matrix{ComplexF64}(undef, 1, Ns)
 
     copyto!(view(BRs,:,:,1) , model.Pt)
     transpose!(view(BLs,:,:,NN) , model.Pt)
@@ -48,43 +41,26 @@ function phy_update(path::String, model::_Hubbard_Para, Sweeps::Int64, s::Array{
         LAPACK.gerqf!(tmpnN, tau)
         LAPACK.orgrq!(tmpnN, tau, ns)
         copyto!(view(BLs,:,:,idx) , tmpnN)
-        # view(BLs,:,:,idx) .= Matrix(qr!(tmpNn).Q)'
     end
     
     idx=1
-    get_G!(tmpnn,tmpNn,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
+    get_G!(tmpnn,tmpnN,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
     for loop in 1:Sweeps
         # println("\n Sweep: $loop ")
         for lt in 1:model.Nt
             #####################################################################
-            # # println("lt=",lt-1)
-            # if norm(G-Gτ_old(model,s,lt-1))>1e-6 
-            #     error(lt-1,"Wrap error:  ",norm(G-Gτ_old(model,s,lt-1)))
-            # end
+            # println("lt=",lt-1)
+            if norm(G-Gτ_old(model,s,lt-1))>1e-6 
+                error(lt-1,"Wrap error:  ",norm(G-Gτ_old(model,s,lt-1)))
+            end
             #####################################################################
 
             @inbounds @simd for iii in 1:Ns
                 tmpN[iii] =@fastmath cis( model.α *model.η[s[iii,lt]] ) 
             end
             WrapKV!(tmpNN,model.eK,model.eKinv,tmpN,G,"Forward", "B")
-            # G= Diagonal(tmp_D) * model.eK * G * model.eKinv * Diagonal(conj(tmp_D))
 
-            @inbounds @simd for x in 1:Ns
-                sx = rand(rng,  samplers_dict[s[x, lt]])
-                @fastmath Δ = cis( model.α * (model.η[sx] - model.η[s[x, lt]])) - 1
-                @fastmath r = 1 + Δ * (1 - G[x, x])
-
-                if rand(rng) < @fastmath model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    r=Δ / r
-                    Gupdate!(tmpNN, tmp1N, x, r, G)
-                    s[x, lt] = sx
-                    ####################################################################
-                    # if norm(G-Gτ_old(model,s,lt))>1e-6
-                    #     error("asd")
-                    # end
-                    #####################################################################
-                end
-            end
+            UpdatePhyLayer!(rng,view(s,:,lt),model,UPD,Phy)
             # ---------------------------------------------------------------------------------------------------------
             # record physical quantities
             if record && 0<=(Θidx-idx)<=1
@@ -109,7 +85,7 @@ function phy_update(path::String, model::_Hubbard_Para, Sweeps::Int64, s::Array{
 
                 copyto!(tmpNN , G)
 
-                get_G!(tmpnn,tmpNn,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
+                get_G!(tmpnn,tmpnN,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
                 #####################################################################
                 axpy!(-1.0, G, tmpNN)  
                 if norm(tmpNN)>1e-8
@@ -121,28 +97,13 @@ function phy_update(path::String, model::_Hubbard_Para, Sweeps::Int64, s::Array{
 
         for lt in model.Nt:-1:1
             #####################################################################
-            # print("-")
-            # if norm(G-Gτ_old(model,s,lt))>1e-6 
-            #     error(lt," Wrap error:  ",norm(G-Gτ_old(model,s,lt)))
-            # end
+            print("-")
+            if norm(G-Gτ_old(model,s,lt))>1e-6 
+                error(lt," Wrap error:  ",norm(G-Gτ_old(model,s,lt)))
+            end
             #####################################################################
 
-            @inbounds @simd for x in 1:Ns
-                sx = rand(rng,  samplers_dict[s[x, lt]])
-                @fastmath Δ = cis( model.α * (model.η[sx] - model.η[s[x, lt]])) - 1
-                @fastmath r = 1 + Δ * (1 - G[x, x])
-
-                if rand(rng) < @fastmath model.γ[sx] / model.γ[s[x, lt]] * abs2(r)
-                    r=Δ / r
-                    Gupdate!(tmpNN, tmp1N, x, r, G)
-                    s[x, lt] = sx
-                    ####################################################################
-                    # if norm(G-Gτ_old(model,s,lt))>1e-6
-                    #     error("asd")
-                    # end
-                    #####################################################################
-                end
-            end
+            UpdatePhyLayer!(rng,view(s,:,lt),model,UPD,Phy)
             # ---------------------------------------------------------------------------------------------------------
             # record physical quantities
             if record && 0<=(idx-Θidx)<=1
@@ -170,7 +131,7 @@ function phy_update(path::String, model::_Hubbard_Para, Sweeps::Int64, s::Array{
                 LAPACK.orgrq!(tmpnN, tau, ns)
                 copyto!(view(BLs,:,:,idx),tmpnN)
 
-                get_G!(tmpnn,tmpNn,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
+                get_G!(tmpnn,tmpnN,ipiv,view(BLs,:,:,idx),view(BRs,:,:,idx),G)
             end
         end
 
@@ -190,15 +151,23 @@ end
         G = I - BR ⋅ inv(BL ⋅ BR) ⋅ BL 
     ------------------------------------------------------------------------------
 """
-function get_G!(tmpnn,tmpNn,ipiv,BL,BR,G)
-    mul!(tmpnn, BL,BR)
-    LAPACK.getrf!(tmpnn,ipiv)
-    LAPACK.getri!(tmpnn, ipiv)
-    mul!(tmpNn, BR, tmpnn)
-    mul!(G, tmpNn, BL)
-    lmul!(-1.0,G)
-    for i in diagind(G)
-        G[i]+=1
+function get_G!(tmpnn,tmpnN,ipiv,BL,BR,G)
+    # 目标: 计算 G = I - BR * inv(BL * BR) * BL，避免显式求逆 (getri!)
+    # 步骤:
+    # 1. tmpnn ← M = BL * BR
+    # 2. LU 分解 tmpnn 得到 pivot ipiv
+    # 3. tmpnN ← BL (右端)，求解 M * X = BL 得 X = inv(M)*BL  (使用 getrs!)
+    # 4. G ← BR * X
+    # 5. G ← I - G
+    # 数值优势: 避免显式逆，提升稳定性与性能，减少 FLOPs。
+    mul!(tmpnn, BL, BR)                 # tmpnn = M = BL*BR
+    LAPACK.getrf!(tmpnn, ipiv)          # LU 分解 (in-place)
+    tmpnN .= BL                         # 右端初始化: RHS = BL
+    LAPACK.getrs!('N', tmpnn, ipiv, tmpnN) # 解 M * X = BL, 结果写回 tmpNn
+    mul!(G, BR, tmpnN)                  # G = BR * inv(M) * BL
+    lmul!(-1.0, G)                      # G = - G
+    @inbounds for i in diagind(G)       # G = I - BR * inv(M) * BL
+        G[i] += 1.0
     end
 end
 
@@ -234,15 +203,19 @@ function WrapKV!(tmpNN,eK,eKinv,D,G,direction,LR)
     end
 end
 
-function Gupdate!(tmpNN::Matrix{ComplexF64},tmp1N::Matrix{ComplexF64},x::Int64,r::ComplexF64,G::Matrix{ComplexF64})
-    view(tmp1N,1, :) .= .-view(G,x, :)
-    tmp1N[1, x] += 1
-    mul!(tmpNN, view(G, :, x), tmp1N)
-    axpy!(-r, tmpNN, G)
+"""
+    No Return. Overwrite G = G - G · inv(r) ⋅ Δ · (I-G)
+    ------------------------------------------------------------------------------
+"""
+function Gupdate!(Phy::PhyBuffer_,UPD::UpdateBuffer_)
+    mul!(Phy.zN,UPD.r,view(Phy.G,UPD.subidx,:))
+    lmul!(-1.0,Phy.zN)
+    axpy!(1.0,UPD.r,view(Phy.zN,:,UPD.subidx))   # useful for GΘτ,Gτ
+    mul!(Phy.NN, view(Phy.G,:,UPD.subidx),Phy.zN)
+    axpy!(-1.0, Phy.NN, Phy.G)
 end
 
-
-function phy_measure(model::_Hubbard_Para,lt,s,G,tmpNN,tmpN)
+function phy_measure(model::Hubbard_Para_,lt,s,G,tmpNN,tmpN)
     """
     (Ek,Ev,R0,R1)    
     """
@@ -346,4 +319,17 @@ function phy_measure(model::_Hubbard_Para,lt,s,G,tmpNN,tmpN)
         end
     end
     return Ek,Eu,CDW0,CDW1,SDW0,SDW1
+end
+
+function UpdatePhyLayer!(rng,s,model::Hubbard_Para_,UPD::UpdateBuffer_,Phy::PhyBuffer_)
+    for i in eachindex(s)
+        UPD.subidx = [i]
+        sx = rand(rng,  model.samplers_dict[s[i]])
+        p = get_r!(UPD,model.α*( model.η[sx] - model.η[s[i]]), Phy.G)
+        p*= model.γ[sx] / model.γ[s[i]]
+        if rand(rng) < p
+            Gupdate!(Phy,UPD)
+            s[i] = sx
+        end
+    end
 end

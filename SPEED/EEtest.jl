@@ -1,7 +1,7 @@
 push!(LOAD_PATH,"C:/Users/admin/Desktop/JuliaDQMC/code/SU2PQMC/")
 using DelimitedFiles
 using BenchmarkTools
-using KAPDQMC
+using KAPDQMC_tU
 using LinearAlgebra
 using Random
 
@@ -28,8 +28,8 @@ function main()
     λ=0.5
     Nλ=2
 
-    println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
-    # ctrl_SCEEicr(path,model,indexA,indexB,1,λ,Nλ,ss,true)
+    # println(@btime ctrl_SCEEicr($path,$model,$indexA,$indexB,$Sweeps,$λ,$Nλ,$ss,$true) )
+    ctrl_SCEEicr(path,model,indexA,indexB,10,λ,Nλ,ss,true)
 end
 
 main()
